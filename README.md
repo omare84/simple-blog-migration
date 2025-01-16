@@ -30,3 +30,29 @@ DB_NAME=simple_blog
 ### 5. Start the Server
 node server.js
 
+## API Endpoints
+
+### Posts
+- **GET /posts**: Fetch all blog posts.
+- **POST /posts**: Add a new blog post.
+  - Request Body:
+    ```json
+    {
+      "title": "Post Title",
+      "content": "Post Content",
+      "author": "Author Name"
+    }
+    ```
+- **GET /posts/:id**: Fetch a blog post by ID.
+- **PUT /posts/:id**: Update a blog post by ID.
+  - Request Body:
+    ```json
+    {
+      "title": "Updated Title",
+      "content": "Updated Content",
+      "author": "Updated Author"
+    }
+    ```
+- **DELETE /posts/:id**: Delete a blog post by ID.
+
+
