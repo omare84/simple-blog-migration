@@ -54,5 +54,20 @@ node server.js
     }
     ```
 - **DELETE /posts/:id**: Delete a blog post by ID.
+- 
+## Phase 3: Database Migration
+
+In this phase, we focus on demonstrating the ability to migrate and manage databases effectively.
+
+### Overview
+- **Database Setup**: Set up PostgreSQL as the database for the blog application.
+- **Schema Creation**: Designed a simple `posts` table with fields for `id`, `title`, `content`, `author`, and `created_at`.
+- **Migration Process**: Implemented a migration script that automatically sets up the `posts` table and allows seamless data management. The project is designed to migrate data between PostgreSQL and another potential database (for example, MySQL, DynamoDB).
+
+### Key Concepts Covered:
+- **Database Schema Design**: How to structure the data, ensuring relationships and performance are optimized.
+- **Migration Scripts**: Wrote SQL scripts for creating and managing tables and data. This step demonstrates the ability to migrate schema and data effectively across different databases.
+- **PostgreSQL**: Experience working with PostgreSQL, including setting up and connecting to the database from the backend.
+
 
 
