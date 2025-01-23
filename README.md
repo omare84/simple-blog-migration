@@ -42,21 +42,18 @@ npm install
 Ensure PostgreSQL is installed and running on your system.
 Create a new database called simple_blog:
 sql
-Copy code
 CREATE DATABASE simple_blog;
 4. Configure Environment Variables
 Create a .env file in the project root and add the following:
 
-plaintext
-Copy code
+
 DB_USER=your_username
 DB_PASSWORD=your_password
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=simple_blog
 5. Start the Server
-bash
-Copy code
+
 node server.js
 The server will start on http://localhost:3000.
 
@@ -66,7 +63,6 @@ GET /posts: Fetch all blog posts.
 POST /posts: Add a new blog post.
 Request Body:
 json
-Copy code
 {
   "title": "Post Title",
   "content": "Post Content",
@@ -91,7 +87,6 @@ Key Accomplishments
 Database Setup: Configured PostgreSQL as the primary database.
 Schema Design: Created a posts table with the following structure:
 sql
-Copy code
 CREATE TABLE posts (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
