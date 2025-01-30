@@ -6,9 +6,11 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // CORS Configuration
-// Allows requests from the frontend (http://localhost:3001)
+// Allow requests from the CloudFront domain
 app.use(cors({
-    origin: 'http://localhost:3001'
+    origin: 'https://d19s599jz0z1u5.cloudfront.net', // Replace with your actual CloudFront domain
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],       // Allowed HTTP methods
+    allowedHeaders: ['Content-Type']                 // Allowed headers
 }));
 
 // Middleware to parse JSON request bodies
@@ -49,5 +51,3 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
-
-
