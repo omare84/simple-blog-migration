@@ -6,7 +6,7 @@ function App() {
 
     // Fetch blog posts from the backend API
     useEffect(() => {
-        axios.get('http://3.19.164.108:3000/api/posts') // Updated to use EC2 public IP
+        axios.get('https://scalabledeploy.com/api/posts') // Change to HTTPS + domain
             .then(response => setPosts(response.data))
             .catch(error => console.error('Error fetching posts:', error));
     }, []);
