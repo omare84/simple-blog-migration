@@ -46,7 +46,7 @@ app.get('/', (req, res) => {
   res.send('Server is running!');
 });
 
-// New POST route to add posts to RDS
+// Create a new post
 app.post("/api/posts", async (req, res) => {
     const { title, content, author } = req.body;
     if (!title || !content || !author) {
@@ -61,6 +61,42 @@ app.post("/api/posts", async (req, res) => {
         res.status(201).json({ message: "Post created successfully!", id: result.rows[0].id });
     } catch (error) {
         console.error("Error inserting post:", error);
+        res.status(500).json({ error: "Database error" });
+    }
+});
+
+// Update a post
+app.put('/api/posts/:id', async (req, res) => {
+    const { title, content, author } = req.body;
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query(
+            'UPDATE posts SET title=$1, content=$2, author=$3 WHERE id=$4 RETURNING *',
+            [title, content, author, id]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: "Post not found" });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Database error" });
+    }
+});
+
+// Delete a post
+app.delete('/api/posts/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query('DELETE FROM posts WHERE id=$1 RETURNING *', [id]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: "Post not found" });
+        }
+        res.json({ message: "Post deleted successfully" });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Database error" });
     }
 });
