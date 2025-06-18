@@ -1,109 +1,126 @@
+// src/App.js
 import React, { useEffect, useState } from 'react';
+import { Authenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
 import axios from 'axios';
 
 const API_URL = 'https://scalabledeploy.com/api/posts';
 
-function App() {
-    const [posts, setPosts] = useState([]);
-    const [newPost, setNewPost] = useState({ title: '', content: '', author: '' });
-    const [editingPost, setEditingPost] = useState(null);
+function AppContent({ signOut, user }) {
+  const [posts, setPosts] = useState([]);
+  const [newTitle, setNewTitle] = useState('');
+  const [newContent, setNewContent] = useState('');
 
-    useEffect(() => {
-        fetchPosts();
-    }, []);
-
+  useEffect(() => {
     const fetchPosts = async () => {
-        try {
-            const response = await axios.get(API_URL);
-            setPosts(response.data);
-        } catch (error) {
-            console.error('Error fetching posts:', error);
-        }
+      try {
+        const res = await axios.get(API_URL);
+        setPosts(res.data);
+      } catch (err) {
+        console.error('Fetch posts error:', err);
+      }
     };
+    fetchPosts();
+  }, []);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        const method = editingPost ? 'put' : 'post';
-        const url = editingPost ? `${API_URL}/${editingPost.id}` : API_URL;
+  const createPost = async () => {
+    try {
+      const res = await axios.post(API_URL, {
+        title: newTitle,
+        content: newContent,
+        userId: user.username,
+      });
+      setPosts([res.data, ...posts]);
+      setNewTitle('');
+      setNewContent('');
+    } catch (err) {
+      console.error('Create post error:', err);
+    }
+  };
 
-        try {
-            const response = await axios({
-                method,
-                url,
-                data: newPost,
-            });
+  const editPost = async (post) => {
+    try {
+      const updated = {
+        ...post,
+        title: prompt('New title', post.title) || post.title,
+        content: prompt('New content', post.content) || post.content,
+      };
+      const res = await axios.put(`${API_URL}/${post.id}`, updated);
+      setPosts(posts.map((p) => (p.id === post.id ? res.data : p)));
+    } catch (err) {
+      console.error('Edit post error:', err);
+    }
+  };
 
-            if (response.status === 200 || response.status === 201) {
-                fetchPosts();
-                setNewPost({ title: '', content: '', author: '' });
-                setEditingPost(null);
-            }
-        } catch (error) {
-            console.error(`Error ${editingPost ? 'updating' : 'creating'} post:`, error);
-        }
-    };
+  const deletePost = async (id) => {
+    try {
+      await axios.delete(`${API_URL}/${id}`);
+      setPosts(posts.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error('Delete post error:', err);
+    }
+  };
 
-    const handleEdit = (post) => {
-        setNewPost(post);
-        setEditingPost(post);
-    };
+  return (
+    <div style={{ padding: 20 }}>
+      <h1>Welcome, {user.username}!</h1>
+      <button onClick={signOut}>Sign Out</button>
 
-    const handleDelete = async (id) => {
-        try {
-            await axios.delete(`${API_URL}/${id}`);
-            fetchPosts();
-        } catch (error) {
-            console.error('Error deleting post:', error);
-        }
-    };
+      <h2>Create New Post</h2>
+      <input
+        type="text"
+        placeholder="Title"
+        value={newTitle}
+        onChange={(e) => setNewTitle(e.target.value)}
+        style={{ width: '100%', marginBottom: 8 }}
+      />
+      <textarea
+        placeholder="Content"
+        value={newContent}
+        onChange={(e) => setNewContent(e.target.value)}
+        style={{ width: '100%', marginBottom: 8 }}
+        rows={4}
+      />
+      <button
+        onClick={createPost}
+        disabled={!newTitle.trim() || !newContent.trim()}
+      >
+        New Post
+      </button>
 
-    return (
-        <div>
-            <h1>Simple Blog</h1>
-
-            {/* Form to create/update a post */}
-            <form onSubmit={handleSubmit}>
-                <input 
-                    type="text" 
-                    placeholder="Title" 
-                    value={newPost.title} 
-                    onChange={(e) => setNewPost({ ...newPost, title: e.target.value })} 
-                    required 
-                />
-                <textarea 
-                    placeholder="Content" 
-                    value={newPost.content} 
-                    onChange={(e) => setNewPost({ ...newPost, content: e.target.value })} 
-                    required 
-                />
-                <input 
-                    type="text" 
-                    placeholder="Author" 
-                    value={newPost.author} 
-                    onChange={(e) => setNewPost({ ...newPost, author: e.target.value })} 
-                    required 
-                />
-                <button type="submit">{editingPost ? 'Update Post' : 'Create Post'}</button>
-            </form>
-
-            {/* Display posts */}
-            {posts.length > 0 ? (
-                <ul>
-                    {posts.map((post) => (
-                        <li key={post.id}>
-                            <h2>{post.title}</h2>
-                            <p>{post.content}</p>
-                            <small>By {post.author}</small>
-                            <button onClick={() => handleEdit(post)}>Edit</button>
-                            <button onClick={() => handleDelete(post.id)}>Delete</button>
-                        </li>
-                    ))}
-                </ul>
-            ) : (
-                <p>No posts available</p>
-            )}
-        </div>
-    );
+      <h2 style={{ marginTop: 32 }}>Blog Posts</h2>
+      {posts.length === 0 ? (
+        <p>No posts available.</p>
+      ) : (
+        posts.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              marginBottom: 20,
+              border: '1px solid #ccc',
+              padding: 10,
+              borderRadius: 4,
+            }}
+          >
+            <h3>{p.title}</h3>
+            <p>{p.content}</p>
+            <button onClick={() => editPost(p)} style={{ marginRight: 8 }}>
+              Edit
+            </button>
+            <button onClick={() => deletePost(p.id)}>Delete</button>
+          </div>
+        ))
+      )}
+    </div>
+  );
 }
 
-export default App;
+export default function App() {
+  return (
+    <Authenticator>
+      {({ signOut, user }) => (
+        <AppContent signOut={signOut} user={user} />
+      )}
+    </Authenticator>
+  );
+}
