@@ -38,7 +38,8 @@ jobs:
       - name: Deploy SAM
         working-directory: ./
         run: |
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
 
       # 2) Build & deploy React frontend
       - name: Setup Node.js
