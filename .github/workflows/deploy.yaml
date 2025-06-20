@@ -1,0 +1,68 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main      # change if your main branch has a different name
+
+permissions:
+  id-token: write      # for OIDC assume-role
+  contents: read       # to checkout code
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 1) Build & deploy SAM backend
+      - name: Install dependencies for SAM
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install aws-sam-cli
+
+      - name: Build SAM
+        working-directory: ./   # template.yaml at repo root
+        run: |
+          sam build
+
+      - name: Deploy SAM
+        working-directory: ./
+        run: |
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+
+      # 2) Build & deploy React frontend
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        run: |
+          cd frontend   # adjust folder name: your React app is in `frontend`
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Sync frontend to S3
+        run: |
+          aws s3 sync frontend/build/ s3://simple-blog-frontend --delete
+          # Replace s3://simple-blog-frontend with your actual bucket name defined in SAM or CloudFormation
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CF_DISTRIBUTION_ID }} \
+            --paths "/*"
