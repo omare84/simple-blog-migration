@@ -3,24 +3,24 @@ import React, { useEffect, useState } from 'react';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import axios from 'axios';
-import { fetchAuthSession } from 'aws-amplify/auth';   // <-- v6 functional import
+import { fetchAuthSession } from 'aws-amplify/auth'; // For Amplify Auth v6
 
 const API_URL = 'https://scalabledeploy.com/api/posts';
 
 function AppContent({ signOut, user }) {
-  const [posts, setPosts]         = useState([]);
-  const [newTitle, setNewTitle]   = useState('');
+  const [posts, setPosts] = useState([]);
+  const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Grab Cognito JWT via v6 API
+  // Grab Cognito JWT
   const getAuthToken = async () => {
     const session = await fetchAuthSession();
     return session.tokens?.idToken?.toString();
   };
 
-  // Axios instance that attaches the JWT
+  // Axios instance with JWT attached
   const authAxios = axios.create();
   authAxios.interceptors.request.use(async (config) => {
     const token = await getAuthToken();
@@ -29,7 +29,6 @@ function AppContent({ signOut, user }) {
   });
 
   // Fetch posts on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -93,6 +92,7 @@ function AppContent({ signOut, user }) {
   if (loading) {
     return <div className="text-center p-8">Loading posts…</div>;
   }
+
   if (error) {
     return (
       <div className="max-w-2xl mx-auto p-4">
