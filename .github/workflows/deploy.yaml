@@ -59,7 +59,7 @@ jobs:
 
       - name: Sync frontend to S3
         run: |
-          aws s3 sync frontend/build/ s3://simple-blog-frontend --delete
+          aws s3 sync frontend/build/ s3://sam-app-frontendbucket-fymhb6hc3zdv --delete
           # Replace s3://simple-blog-frontend with your actual bucket name defined in SAM or CloudFormation
 
       - name: Invalidate CloudFront cache
