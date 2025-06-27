@@ -119,7 +119,7 @@ Resources:
             Path: /api/posts/{id}
             Method: DELETE
 
-  ### Frontend S3 Bucket ###
+  ### S3 Bucket for Frontend ###
   FrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -129,7 +129,7 @@ Resources:
         BlockPublicPolicy:     true
         RestrictPublicBuckets: true
 
-  ### CloudFront Origin Access Control ###
+  ### Origin Access Control ###
   FrontendOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -159,7 +159,6 @@ Resources:
               OriginProtocolPolicy: https-only
               HTTPPort: 80
               HTTPSPort: 443
-
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
@@ -174,7 +173,6 @@ Resources:
             QueryString: false
             Cookies:
               Forward: none
-
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: ApiOrigin
@@ -187,19 +185,53 @@ Resources:
               - PUT
               - DELETE
               - PATCH
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad      # AWSManaged-CachingDisabled
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AWSManaged-AllViewerExceptHostHeader
-
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
         ViewerCertificate:
           AcmCertificateArn: !Ref CertificateArn
           SslSupportMethod: sni-only
         HttpVersion: http2
 
+  ### Uploads Bucket for Media ###
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: simple-blog-uploads-omare84
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - https://!Ref DomainName
+            AllowedMethods:
+              - GET
+              - PUT
+            AllowedHeaders: ["*"]
+
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: getUploadUrl.handler
+      Runtime: nodejs16.x
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          UPLOADS_BUCKET: !Ref UploadsBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref UploadsBucket
+      Events:
+        GetUploadUrlApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/posts/{id}/upload-url
+            Method: GET
+
 Outputs:
   WebsiteURL:
     Description: CloudFront URL
     Value: !Sub "https://${DomainName}"
-
   ApiEndpoint:
     Description: API invoke URL
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
