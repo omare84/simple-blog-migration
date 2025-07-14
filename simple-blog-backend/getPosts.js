@@ -1,70 +1,84 @@
 // simple-blog-backend/getPosts.js
+
 const { Client } = require("pg");
-const AWS = require("aws-sdk");
+const Redis = require("ioredis");
 
-// Fetch _only_ the password field from Secrets Manager
+let redisClient;
+function getRedisClient() {
+  if (!redisClient) {
+    const [host, port] = process.env.REDIS_ENDPOINT.split(":");
+    redisClient = new Redis({ host, port });
+  }
+  return redisClient;
+}
+
+// Fetch the plain-text password from environment variable
 async function getDbPassword() {
-  const sm = new AWS.SecretsManager();
-  const secretArn = process.env.DB_PASS_SECRET_ARN;
-
-  try {
-    const data = await sm.getSecretValue({ SecretId: secretArn }).promise();
-
-    if (!data.SecretString) {
-      throw new Error(`SecretString is empty for ARN: ${secretArn}`);
-    }
-
-    // We expect the secret to be a JSON like { "password": "mypassword" }
-    const parsed = JSON.parse(data.SecretString);
-    if (typeof parsed.password !== "string") {
-      throw new Error("Secret JSON does not contain a string 'password' field");
-    }
-
-    return parsed.password;
-  } catch (err) {
-    console.error("Error retrieving or parsing secret:", err);
-    throw new Error("Unable to retrieve database password");
-  }
+  return process.env.DB_PASS;
 }
 
-// Build and connect a new PostgreSQL client inside the VPC
+// Connect to PostgreSQL inside your VPC
 async function connectClient() {
-  let password;
-  try {
-    password = await getDbPassword();
-  } catch (e) {
-    // Propagate as a higher‐level error
-    throw e;
-  }
-
+  const password = await getDbPassword();
   const client = new Client({
-    host: process.env.DB_HOST,         // e.g. simple-blog.chq0uccsu4k7.us-east-2.rds.amazonaws.com
-    database: process.env.DB_NAME,     // e.g. simple_blog
-    user: process.env.DB_USER,         // e.g. postgres
-    password,                          // pulled from Secrets Manager
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password,
     port: 5432,
-    ssl: { rejectUnauthorized: false }, // allow VPC TLS
-    // (timeout settings can be added here if desired)
+    ssl: { rejectUnauthorized: false },
   });
-
-  try {
-    await client.connect();
-    return client;
-  } catch (connErr) {
-    console.error("Database connection failed:", connErr);
-    throw new Error("Database connection failed");
-  }
+  await client.connect();
+  return client;
 }
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  console.log("🟢 getPosts invoked");
+
+  // 🔍 Debug: ping Redis first
+  try {
+    console.log("🟢 pinging Redis at", process.env.REDIS_ENDPOINT);
+    await getRedisClient().ping();
+    console.log("🟢 Redis ping succeeded");
+  } catch (err) {
+    console.error("🔴 Redis ping failed:", err);
+    // If this fails, we know Redis is the problem—no need to continue
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Cannot reach Redis" }),
+    };
+  }
+
+  const redis = getRedisClient();
+  const cacheKey = "posts:all";
+
+  // 1) Check cache first
+  try {
+    console.log("🟢 checking cache for key", cacheKey);
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      console.log("🟢 Cache hit");
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: cached,
+      };
+    }
+    console.log("🟢 Cache miss");
+  } catch (cacheErr) {
+    console.warn("🟡 Redis GET error, proceeding to DB:", cacheErr);
+  }
+
+  // 2) Cache miss → fetch from RDS
   let client;
   try {
     client = await connectClient();
-  } catch (e) {
+  } catch (dbConnErr) {
+    console.error("🔴 DB connect failed:", dbConnErr);
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: e.message }),
+      body: JSON.stringify({ message: dbConnErr.message }),
     };
   }
 
@@ -74,14 +88,21 @@ exports.handler = async () => {
     );
     await client.end();
 
+    const body = JSON.stringify(res.rows);
+
+    // 3) Populate cache with a 60s TTL
+    redis.set(cacheKey, body, "EX", 60).catch((setErr) => {
+      console.warn("🟡 Redis SET failed:", setErr);
+    });
+
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(res.rows),
+      body,
     };
   } catch (queryErr) {
-    console.error("Error running SELECT:", queryErr);
-    await client.end();
+    console.error("🔴 Error running SELECT:", queryErr);
+    if (client) await client.end();
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },

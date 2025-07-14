@@ -1,15 +1,23 @@
 // simple-blog-backend/createPost.js
-const { Client } = require("pg");
-const AWS = require("aws-sdk");
 
-// helper to fetch the DB password from Secrets Manager
-async function getDbPassword() {
-  const sm = new AWS.SecretsManager();
-  const data = await sm.getSecretValue({ SecretId: process.env.DB_PASS_SECRET_ARN }).promise();
-  return JSON.parse(data.SecretString).password;
+const { Client } = require("pg");
+const Redis = require("ioredis");
+
+let redisClient;
+function getRedisClient() {
+  if (!redisClient) {
+    const [host, port] = process.env.REDIS_ENDPOINT.split(":");
+    redisClient = new Redis({ host, port });
+  }
+  return redisClient;
 }
 
-// construct & connect a new PG client
+// Fetch the plain-text password from environment variable
+async function getDbPassword() {
+  return process.env.DB_PASS;
+}
+
+// Construct & connect a new PG client
 async function connectClient() {
   const password = await getDbPassword();
   const client = new Client({
@@ -18,14 +26,13 @@ async function connectClient() {
     user: process.env.DB_USER,
     password,
     port: 5432,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
   });
   await client.connect();
   return client;
 }
 
 exports.handler = async (event) => {
-  // ←----- DEBUG: log the raw body
   console.log("RAW event.body:", event.body);
 
   let payload;
@@ -40,16 +47,38 @@ exports.handler = async (event) => {
   }
 
   const { title, content, author } = payload;
-  const client = await connectClient();
-  const res = await client.query(
-    "INSERT INTO posts(title, content, author) VALUES($1,$2,$3) RETURNING *",
-    [title, content, author]
-  );
-  await client.end();
+  let client;
+  try {
+    client = await connectClient();
 
-  return {
-    statusCode: 201,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(res.rows[0]),
-  };
-};  // ←----- make sure this brace closes the handler
+    const res = await client.query(
+      "INSERT INTO posts(title, content, author) VALUES($1,$2,$3) RETURNING *",
+      [title, content, author]
+    );
+    const created = res.rows[0];
+
+    // Invalidate the cache so next GET /posts is fresh
+    try {
+      const redis = getRedisClient();
+      await redis.del("posts:all");
+      console.log("Cache invalidated for posts:all");
+    } catch (cacheErr) {
+      console.warn("Failed to invalidate cache:", cacheErr);
+    }
+
+    return {
+      statusCode: 201,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(created),
+    };
+  } catch (err) {
+    console.error("Error inserting post:", err);
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Error creating post" }),
+    };
+  } finally {
+    if (client) await client.end();
+  }
+};

@@ -1,27 +1,20 @@
 // simple-blog-backend/deletePost.js
 
 const { Client } = require("pg");
-const AWS = require("aws-sdk");
+const Redis = require("ioredis");
 
-// Fetch only the password field from Secrets Manager
-async function getDbPassword() {
-  const sm = new AWS.SecretsManager();
-  const secretArn = process.env.DB_PASS_SECRET_ARN;
-
-  try {
-    const data = await sm.getSecretValue({ SecretId: secretArn }).promise();
-    if (!data.SecretString) {
-      throw new Error(`SecretString is empty for ARN: ${secretArn}`);
-    }
-    const parsed = JSON.parse(data.SecretString);
-    if (typeof parsed.password !== "string") {
-      throw new Error("Secret JSON does not contain a string 'password' field");
-    }
-    return parsed.password;
-  } catch (err) {
-    console.error("Error retrieving or parsing secret:", err);
-    throw new Error("Unable to retrieve database password");
+let redisClient;
+function getRedisClient() {
+  if (!redisClient) {
+    const [host, port] = process.env.REDIS_ENDPOINT.split(":");
+    redisClient = new Redis({ host, port });
   }
+  return redisClient;
+}
+
+// Fetch the plain-text password from environment variable
+async function getDbPassword() {
+  return process.env.DB_PASS;
 }
 
 // Connect using env vars + fetched password
@@ -35,19 +28,13 @@ async function connectClient() {
     port: 5432,
     ssl: { rejectUnauthorized: false },
   });
-
-  try {
-    await client.connect();
-    return client;
-  } catch (connErr) {
-    console.error("Database connection failed:", connErr);
-    throw new Error("Database connection failed");
-  }
+  await client.connect();
+  return client;
 }
 
 exports.handler = async (event) => {
-  // Ensure ID is provided in pathParameters
-  const id = event.pathParameters && event.pathParameters.id;
+  // Ensure ID is provided
+  const id = event.pathParameters?.id;
   if (!id) {
     return {
       statusCode: 400,
@@ -59,21 +46,13 @@ exports.handler = async (event) => {
   let client;
   try {
     client = await connectClient();
-  } catch (e) {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: e.message }),
-    };
-  }
-
-  try {
-    // Attempt to delete; check how many rows were affected
-    const res = await client.query("DELETE FROM posts WHERE id = $1 RETURNING id", [id]);
+    const res = await client.query(
+      "DELETE FROM posts WHERE id = $1 RETURNING id",
+      [id]
+    );
     await client.end();
 
     if (res.rows.length === 0) {
-      // No post with that ID
       return {
         statusCode: 404,
         headers: { "Content-Type": "application/json" },
@@ -81,14 +60,20 @@ exports.handler = async (event) => {
       };
     }
 
-    // 204 No Content indicates successful deletion
-    return {
-      statusCode: 204,
-      body: "",
-    };
-  } catch (queryErr) {
-    console.error("Error running DELETE:", queryErr);
-    await client.end();
+    // Invalidate Redis cache
+    try {
+      const redis = getRedisClient();
+      await redis.del("posts:all");
+      console.log("Cache invalidated for posts:all");
+    } catch (cacheErr) {
+      console.warn("Failed to invalidate cache:", cacheErr);
+    }
+
+    // Successful deletion
+    return { statusCode: 204, body: "" };
+  } catch (err) {
+    console.error("Error deleting post:", err);
+    if (client) await client.end();
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },

@@ -32,10 +32,11 @@ Globals:
     MemorySize: 128
     Environment:
       Variables:
-        DB_HOST:       !Ref DatabaseHost
-        DB_NAME:       !Ref DatabaseName
-        DB_USER:       !Ref DatabaseUser
-        DB_PASS_SECRET_ARN: !Ref DatabasePasswordArn
+        DB_HOST:        !Ref DatabaseHost
+        DB_NAME:        !Ref DatabaseName
+        DB_USER:        !Ref DatabaseUser
+        DB_PASS:        lopez321
+        REDIS_ENDPOINT: my-test-redis.7o4zyy.ng.0001.use2.cache.amazonaws.com:6379
 
 Resources:
 
@@ -79,6 +80,13 @@ Resources:
             RestApiId: !Ref BlogApi
             Path: /api/posts
             Method: GET
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
 
   CreatePostFunction:
     Type: AWS::Serverless::Function
@@ -92,6 +100,13 @@ Resources:
             RestApiId: !Ref BlogApi
             Path: /api/posts
             Method: POST
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
 
   UpdatePostFunction:
     Type: AWS::Serverless::Function
@@ -105,6 +120,13 @@ Resources:
             RestApiId: !Ref BlogApi
             Path: /api/posts/{id}
             Method: PUT
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
 
   DeletePostFunction:
     Type: AWS::Serverless::Function
@@ -118,6 +140,13 @@ Resources:
             RestApiId: !Ref BlogApi
             Path: /api/posts/{id}
             Method: DELETE
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
 
   ### S3 Bucket for Frontend ###
   FrontendBucket:
@@ -200,7 +229,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedOrigins:
-              - https://!Ref DomainName
+              - !Sub "https://${DomainName}"
             AllowedMethods:
               - GET
               - PUT
