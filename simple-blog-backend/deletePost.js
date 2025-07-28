@@ -4,10 +4,29 @@ const { Client } = require("pg");
 const Redis = require("ioredis");
 
 let redisClient;
+let cacheDisabled = false;
+
 function getRedisClient() {
+  if (cacheDisabled) return null;
   if (!redisClient) {
-    const [host, port] = process.env.REDIS_ENDPOINT.split(":");
-    redisClient = new Redis({ host, port });
+    const ep = process.env.REDIS_ENDPOINT;
+    if (!ep) {
+      cacheDisabled = true;
+      return null;
+    }
+    const [host, port] = ep.split(":");
+    try {
+      redisClient = new Redis({ host, port });
+      redisClient.on("error", (err) => {
+        console.warn("Redis error, disabling cache:", err.message);
+        cacheDisabled = true;
+        redisClient.disconnect();
+      });
+    } catch (e) {
+      console.warn("Failed to init Redis, disabling cache:", e.message);
+      cacheDisabled = true;
+      return null;
+    }
   }
   return redisClient;
 }
@@ -60,20 +79,25 @@ exports.handler = async (event) => {
       };
     }
 
-    // Invalidate Redis cache
-    try {
-      const redis = getRedisClient();
-      await redis.del("posts:all");
-      console.log("Cache invalidated for posts:all");
-    } catch (cacheErr) {
-      console.warn("Failed to invalidate cache:", cacheErr);
+    // Invalidate Redis cache if available
+    const redis = getRedisClient();
+    if (redis) {
+      try {
+        await redis.del("posts:all");
+        console.log("Cache invalidated for posts:all");
+      } catch (cacheErr) {
+        console.warn("Failed to invalidate cache:", cacheErr.message);
+        cacheDisabled = true;
+      }
     }
 
     // Successful deletion
     return { statusCode: 204, body: "" };
   } catch (err) {
     console.error("Error deleting post:", err);
-    if (client) await client.end();
+    if (client) {
+      try { await client.end(); } catch {}
+    }
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },

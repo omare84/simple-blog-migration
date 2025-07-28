@@ -4,10 +4,30 @@ const { Client } = require("pg");
 const Redis = require("ioredis");
 
 let redisClient;
+let cacheDisabled = false;
+
 function getRedisClient() {
+  if (cacheDisabled) return null;
   if (!redisClient) {
-    const [host, port] = process.env.REDIS_ENDPOINT.split(":");
-    redisClient = new Redis({ host, port });
+    const ep = process.env.REDIS_ENDPOINT;
+    if (!ep) {
+      cacheDisabled = true;
+      return null;
+    }
+    const [host, port] = ep.split(":");
+    try {
+      redisClient = new Redis({ host, port });
+      // if any error occurs on the client, disable caching permanently
+      redisClient.on("error", (err) => {
+        console.warn("Redis error, disabling cache:", err.message);
+        cacheDisabled = true;
+        redisClient.disconnect();
+      });
+    } catch (e) {
+      console.warn("Failed to init Redis, disabling cache:", e.message);
+      cacheDisabled = true;
+      return null;
+    }
   }
   return redisClient;
 }
@@ -48,9 +68,9 @@ exports.handler = async (event) => {
 
   const { title, content, author } = payload;
   let client;
+
   try {
     client = await connectClient();
-
     const res = await client.query(
       "INSERT INTO posts(title, content, author) VALUES($1,$2,$3) RETURNING *",
       [title, content, author]
@@ -58,12 +78,15 @@ exports.handler = async (event) => {
     const created = res.rows[0];
 
     // Invalidate the cache so next GET /posts is fresh
-    try {
-      const redis = getRedisClient();
-      await redis.del("posts:all");
-      console.log("Cache invalidated for posts:all");
-    } catch (cacheErr) {
-      console.warn("Failed to invalidate cache:", cacheErr);
+    const redis = getRedisClient();
+    if (redis) {
+      try {
+        await redis.del("posts:all");
+        console.log("Cache invalidated for posts:all");
+      } catch (cacheErr) {
+        console.warn("Failed to invalidate cache:", cacheErr.message);
+        cacheDisabled = true;
+      }
     }
 
     return {
@@ -79,6 +102,8 @@ exports.handler = async (event) => {
       body: JSON.stringify({ message: "Error creating post" }),
     };
   } finally {
-    if (client) await client.end();
+    if (client) {
+      try { await client.end(); } catch {}
+    }
   }
 };

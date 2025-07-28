@@ -4,10 +4,29 @@ const { Client } = require("pg");
 const Redis = require("ioredis");
 
 let redisClient;
+let cacheDisabled = false;
+
 function getRedisClient() {
+  if (cacheDisabled) return null;
   if (!redisClient) {
-    const [host, port] = process.env.REDIS_ENDPOINT.split(":");
-    redisClient = new Redis({ host, port });
+    const ep = process.env.REDIS_ENDPOINT;
+    if (!ep) {
+      cacheDisabled = true;
+      return null;
+    }
+    const [host, port] = ep.split(":");
+    try {
+      redisClient = new Redis({ host, port });
+      redisClient.on("error", (err) => {
+        console.warn("Redis error, disabling cache:", err.message);
+        cacheDisabled = true;
+        redisClient.disconnect();
+      });
+    } catch (e) {
+      console.warn("Failed to init Redis, disabling cache:", e.message);
+      cacheDisabled = true;
+      return null;
+    }
   }
   return redisClient;
 }
@@ -35,41 +54,34 @@ async function connectClient() {
 exports.handler = async (event) => {
   console.log("🟢 getPosts invoked");
 
-  // 🔍 Debug: ping Redis first
-  try {
-    console.log("🟢 pinging Redis at", process.env.REDIS_ENDPOINT);
-    await getRedisClient().ping();
-    console.log("🟢 Redis ping succeeded");
-  } catch (err) {
-    console.error("🔴 Redis ping failed:", err);
-    // If this fails, we know Redis is the problem—no need to continue
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ message: "Cannot reach Redis" }),
-    };
-  }
-
   const redis = getRedisClient();
   const cacheKey = "posts:all";
 
-  // 1) Check cache first
-  try {
-    console.log("🟢 checking cache for key", cacheKey);
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      console.log("🟢 Cache hit");
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: cached,
-      };
+  // 1) Try cache if available
+  if (redis) {
+    try {
+      console.log("🟢 pinging Redis at", process.env.REDIS_ENDPOINT);
+      await redis.ping();
+      console.log("🟢 Redis ping succeeded");
+
+      console.log("🟢 checking cache for key", cacheKey);
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log("🟢 Cache hit");
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: cached,
+        };
+      }
+      console.log("🟢 Cache miss");
+    } catch (err) {
+      console.warn("🟡 Redis unavailable or error, disabling cache:", err.message);
+      cacheDisabled = true;
     }
-    console.log("🟢 Cache miss");
-  } catch (cacheErr) {
-    console.warn("🟡 Redis GET error, proceeding to DB:", cacheErr);
   }
 
-  // 2) Cache miss → fetch from RDS
+  // 2) Cache miss or cache disabled → fetch from RDS
   let client;
   try {
     client = await connectClient();
@@ -90,10 +102,15 @@ exports.handler = async (event) => {
 
     const body = JSON.stringify(res.rows);
 
-    // 3) Populate cache with a 60s TTL
-    redis.set(cacheKey, body, "EX", 60).catch((setErr) => {
-      console.warn("🟡 Redis SET failed:", setErr);
-    });
+    // 3) Populate cache if still enabled
+    if (!cacheDisabled && redis) {
+      redis
+        .set(cacheKey, body, "EX", 60)
+        .catch((setErr) => {
+          console.warn("🟡 Redis SET failed, disabling cache:", setErr.message);
+          cacheDisabled = true;
+        });
+    }
 
     return {
       statusCode: 200,
