@@ -43,14 +43,14 @@ npm install
 npm start
 
 # 3. Frontend
-cd ../simple-blog-frontend
+cd ../frontend
 npm install
 npm start
 
 # 4. SAM (for serverless stack)
 # Requires AWS CLI configured
-dotenv -e .env.sam sam build
-sam local start-api
+# Use your local .env
+sam build && sam local start-api
 ```
 
 ### Environment Variables (`.env`)
