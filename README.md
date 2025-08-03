@@ -9,7 +9,7 @@
 | Phase | Description                                                     | Status       |
 |-------|-----------------------------------------------------------------|--------------|
 | 1     | Backend Setup (Node.js, Express, PostgreSQL)                    | ✅ Complete  |
-| 2     | Blog API Development (Full CRUD)                                 | ✅ Complete  |
+| 2     | Blog API Development (Full CRUD)                                | ✅ Complete  |
 | 3     | Database Migration (RDS, Secrets Manager)                       | ✅ Complete  |
 | 4     | Frontend Development (React scaffold + UI improvements)         | ✅ Complete  |
 | 5     | Deployment to AWS (EC2, RDS, ALB)                               | ✅ Complete  |
@@ -36,20 +36,19 @@ git clone https://github.com/omare84/simple-blog-migration.git
 cd simple-blog-migration
 npm install
 
-# 2. Backend
+# 2. Backend (local dev)
 cd simple-blog-backend
 npm install
-# set env vars in .env (see below)
+# copy .env.example to .env and fill variables
 npm start
 
-# 3. Frontend
+# 3. Frontend (local dev)
 cd ../frontend
 npm install
 npm start
 
 # 4. SAM (for serverless stack)
-# Requires AWS CLI configured
-# Use your local .env
+# Requires AWS CLI and SAM CLI configured
 sam build && sam local start-api
 ```
 
@@ -58,12 +57,11 @@ sam build && sam local start-api
 DB_HOST=...            # RDS endpoint
 DB_NAME=simple_blog
 DB_USER=postgres
-# Use Secrets Manager or plain text for demo
-DB_PASSWORD=...
+DB_PASS=...            # plain text for local dev
 FRONTEND_DOMAIN=scalabledeploy.com
 COGNITO_USER_POOL_ID=...
 COGNITO_APP_CLIENT_ID=...
-``` 
+```
 
 ---
 
@@ -77,22 +75,23 @@ COGNITO_APP_CLIENT_ID=...
 
 ## 💰 Cost Optimization
 
-- **Auto‑teardown**: ElastiCache and other non‑prod resources cleaned up via CloudFormation.
-- **S3 Lifecycle**: Archive or expire objects older than 30 days to reduce storage costs.
-- **Reserved Concurrency**: Limit Lambda concurrency to avoid over‑provisioning.
-- **Infra as Code**: All resources managed by SAM—no manual drift.
+- **Redis teardown:** Snapshots and delete of ElastiCache when idle to avoid ongoing charges.  
+- **STS Endpoint optimization:** Reduced STS VPC endpoint to a single subnet ENI, cutting charges by 50%.  
+- **SecretsManager endpoint removal:** Deleted the unneeded SecretsManager interface endpoint after switching to `DB_PASS` env var.  
+- **RDS stop/snapshot:** Stop or snapshot and delete non‑prod RDS instances when not in use.  
+- **S3 Lifecycle rules:** Archive or expire objects older than 30 days to minimize storage.
 
 ---
 
 ## ✨ Key Features
 
-- **CRUD**: Create, Read, Update, Delete blog posts.
-- **Authentication**: AWS Cognito sign‑up, sign‑in, protected routes.
-- **Media Upload**: Presigned S3 URLs for image attachments.
-- **Search/Tagging**: Full‑text search and tag filters (PostgreSQL TSVector).
-- **Caching**: Redis (ElastiCache) for high‑performance read caching.
-- **Notifications**: EventBridge + SES emails on new post creation.
-- **CI/CD**: GitHub Actions → SAM deploys entire stack.
+- **CRUD:** Create, Read, Update, Delete blog posts via secure Lambda APIs.  
+- **Authentication:** AWS Cognito sign‑up, sign‑in, protected routes.  
+- **Media Upload:** Presigned S3 URLs for image attachments, served via CloudFront.  
+- **Search/Tagging:** Full‑text search (PostgreSQL TSVector) and tag filtering on posts.  
+- **Caching:** Redis (ElastiCache) for high‑performance read caching with smart fallback—if Redis is unreachable, functions automatically fall back to RDS.  
+- **Notifications:** EventBridge + SES emails on new post creation.  
+- **CI/CD:** GitHub Actions automates `sam build` and `sam deploy`.
 
 ---
 
@@ -108,35 +107,35 @@ COGNITO_APP_CLIENT_ID=...
 ## 📋 Detailed Setup
 
 1. **Backend Setup**  
-   - Install Node.js dependencies.  
-   - Configure `.env`.  
-   - Run migrations to create `posts` (and `subscribers`) tables.
+   - Install dependencies in `simple-blog-backend/`.  
+   - Configure `.env` with your values.  
+   - Ensure RDS tables (`posts`, `subscribers`) exist via migrations.
 2. **Frontend Setup**  
-   - Install React dependencies.  
-   - Configure Amplify/Cognito.  
-3. **Infrastructure**  
-   - `sam build && sam deploy --guided` to provision:
-     - Lambda functions, API Gateway REST API
-     - RDS PostgreSQL, Secrets Manager
-     - ElastiCache Redis cluster
-     - S3 buckets & CloudFront distribution
-     - Cognito User Pool and App Client
-     - EventBridge Rule & SES permissions
-4. **Deployment**  
-   - Frontend: `npm run build` → `aws s3 sync build/ s3://<bucket>`  
-   - Invalidate CloudFront cache: `aws cloudfront create-invalidation ...`
+   - Install dependencies in `frontend/`.  
+   - Configure Amplify/Cognito via `src/aws-exports.js`.
+3. **Infrastructure Provisioning**  
+   - Run `sam build && sam deploy --guided` to deploy:  
+     - Lambda functions, API Gateway REST API  
+     - RDS PostgreSQL, Secrets Manager (for prod)  
+     - ElastiCache Redis cluster, with snapshots automation  
+     - S3 buckets & CloudFront distribution  
+     - Cognito User Pool and App Client  
+     - EventBridge Rule & SES permissions  
+4. **Frontend Deployment**  
+   - `npm run build` → `aws s3 sync build/ s3://<bucket>`  
+   - Invalidate CloudFront: `aws cloudfront create-invalidation …`
 5. **Testing**  
-   - Sign up, sign in with Cognito.  
-   - Create/edit/delete posts with image upload.  
-   - Search posts, view cached performance.  
-   - Subscribe and receive notification emails.
+   - Sign up and sign in via Cognito.  
+   - Create/edit/delete posts, upload images.  
+   - Search posts and observe cache miss/hit.  
+   - Subscribe and receive notification emails (or review logs).
 
 ---
 
 ## 📖 Documentation & Further Reading
 
-- [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/)
-- [Tailwind CSS Docs](https://tailwindcss.com/docs)
+- [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/)  
+- [Tailwind CSS Docs](https://tailwindcss.com/docs)  
 - [PostgreSQL Full‑Text Search](https://www.postgresql.org/docs/current/textsearch.html)
 
 ---
