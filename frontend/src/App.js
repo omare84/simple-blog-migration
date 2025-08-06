@@ -36,7 +36,7 @@ export function NavBar() {
     </nav>
   );
 }
-
+export { AppContent };
 export default function App() {
   return (
     <Authenticator>
@@ -60,7 +60,7 @@ export default function App() {
 
             <main className="flex-grow bg-gray-50 p-6">
               <Routes>
-                <Route path="/" element={<HomePage user={user} />} />
+                <Route path="/" element={<HomePage user={user} signOut={signOut} />} />
                 <Route path="/features" element={<FeaturesPage />} />
                 <Route
                   path="/blog/cache"
