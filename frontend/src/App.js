@@ -54,6 +54,7 @@ export function AppContent({ signOut, user }) {
     })();
   }, [authAxios]);
 
+  // eslint-disable-next-line no-unused-vars
   const createPost = async () => {
     setError('');
     try {
