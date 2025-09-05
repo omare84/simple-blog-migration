@@ -3,11 +3,11 @@ name: CI/CD
 on:
   push:
     branches:
-      - main      # change if your main branch has a different name
+      - main
 
 permissions:
-  id-token: write      # for OIDC assume-role
-  contents: read       # to checkout code
+  id-token: write
+  contents: read
 
 jobs:
   build_and_deploy:
@@ -24,16 +24,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 1) Build & deploy SAM backend
-      - name: Install dependencies for SAM
+      # 1) SAM build & deploy
+      - name: Install SAM CLI
         run: |
           python3 -m pip install --upgrade pip
           pip install aws-sam-cli
 
       - name: Build SAM
-        working-directory: ./   # template.yaml at repo root
-        run: |
-          sam build
+        working-directory: ./
+        run: sam build
 
       - name: Deploy SAM
         working-directory: ./
@@ -41,7 +40,34 @@ jobs:
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
 
-      # 2) Build & deploy React frontend
+      # ← Read CF outputs and set REACT_APP_API_URL for frontend build
+      - name: Get API Endpoint & export REACT_APP_API_URL
+        shell: bash
+        run: |
+          # prefer stack name from samconfig.toml, otherwise fall back to provided secret or literal
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${{ secrets.SAM_STACK_NAME }}" || echo "sam-app")
+          echo "Using CloudFormation stack: $STACK_NAME"
+
+          API_ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)
+
+          echo "CloudFormation raw ApiEndpoint: $API_ENDPOINT"
+
+          if [ -z "$API_ENDPOINT" ] || [ "$API_ENDPOINT" = "None" ]; then
+            echo "ERROR: Could not find ApiEndpoint in CloudFormation outputs for stack $STACK_NAME"
+            exit 1
+          fi
+
+          REACT_APP_API_URL="${API_ENDPOINT}/api/posts"
+          # defensive normalization to avoid double slashes like https://...//api/posts
+          REACT_APP_API_URL=${REACT_APP_API_URL//\/\/api/\/api}
+
+          echo "REACT_APP_API_URL=$REACT_APP_API_URL" >> $GITHUB_ENV
+          echo "Exported REACT_APP_API_URL"
+
+      # 2) Build & deploy frontend
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
@@ -49,10 +75,12 @@ jobs:
 
       - name: Install frontend deps
         run: |
-          cd frontend   # adjust folder name: your React app is in `frontend`
+          cd frontend
           npm ci
 
       - name: Build frontend
+        env:
+          REACT_APP_API_URL: ${{ env.REACT_APP_API_URL }}
         run: |
           cd frontend
           npm run build
@@ -60,7 +88,6 @@ jobs:
       - name: Sync frontend to S3
         run: |
           aws s3 sync frontend/build/ s3://sam-app-frontendbucket-fymhb6hc3zdv --delete
-          # Replace s3://simple-blog-frontend with your actual bucket name defined in SAM or CloudFormation
 
       - name: Invalidate CloudFront cache
         run: |

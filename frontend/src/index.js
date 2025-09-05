@@ -1,31 +1,51 @@
-// frontend/src/index.js
+// src/index.js
 import React from 'react';
-import { createRoot } from 'react-dom/client';
-import { HashRouter as Router } from 'react-router-dom';
+import ReactDOM from 'react-dom';
+import { BrowserRouter } from 'react-router-dom';
+
 import { Amplify } from 'aws-amplify';
-import awsConfig from './aws-exports';
+import awsConfig from './aws-exports'; // adjust path if needed
+
 import App from './App';
 import './index.css';
 
-Amplify.configure(awsConfig);
-
-// Workaround: make sure history.state isn't `undefined` (prevents safeParseJson error)
-try {
-  // On some hosts/history states, history.state === undefined causes an internal JSON.parse on undefined.
-  // Replace with null so React Router / history has something safe to read.
-  if (typeof window !== 'undefined' && window.history && window.history.state === undefined) {
-    // use replaceState to avoid adding a new history entry
-    window.history.replaceState(null, document.title, window.location.href);
+// Normalize custom awsConfig -> Amplify expected shape (keeps compatibility)
+function normalizeAwsConfig(cfg) {
+  if (!cfg) return cfg;
+  if (cfg.Auth && (cfg.Auth.userPoolId || cfg.Auth.userPoolWebClientId || cfg.Auth.userPoolClientId)) {
+    return cfg;
   }
-} catch (err) {
-  // Non-fatal: if this fails, just warn and continue — we'll see the original error in console.
-  // eslint-disable-next-line no-console
-  console.warn('history state guard failed', err);
+  const cogn = cfg.Auth && cfg.Auth.Cognito ? cfg.Auth.Cognito : null;
+  if (cogn) {
+    const mapped = {
+      Auth: {
+        userPoolId: cogn.userPoolId,
+        userPoolWebClientId: cogn.userPoolClientId || cogn.userPoolWebClientId,
+        region: cogn.region || cfg.region || undefined,
+      },
+    };
+    const oauth = cogn.loginWith && cogn.loginWith.oauth ? cogn.loginWith.oauth : null;
+    if (oauth) {
+      mapped.Auth.oauth = {
+        domain: oauth.domain,
+        scope: oauth.scope,
+        redirectSignIn: oauth.redirectSignIn,
+        redirectSignOut: oauth.redirectSignOut,
+        responseType: oauth.responseType,
+      };
+    }
+    return mapped;
+  }
+  return cfg;
 }
 
-const root = createRoot(document.getElementById('root'));
-root.render(
-  <Router>
-    <App />
-  </Router>
+Amplify.configure(normalizeAwsConfig(awsConfig));
+
+ReactDOM.render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>,
+  document.getElementById('root')
 );

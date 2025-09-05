@@ -4,6 +4,7 @@ const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
+require('dotenv').config();
 
 // CORS Configuration - now using environment variable with fallback
 app.use(cors({

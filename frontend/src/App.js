@@ -1,18 +1,27 @@
 // src/App.js
 import React, { useEffect, useState, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import axios from 'axios';
-import { fetchAuthSession } from 'aws-amplify/auth';
-import { Amplify } from 'aws-amplify';
-import awsConfig from './aws-exports';
+import { Auth } from 'aws-amplify';
+
+// Import your pages
 import HomePage from './pages/HomePage';
 import FeaturesPage from './pages/FeaturesPage';
 import ComingSoon from './pages/ComingSoon';
+import BlogPage from './pages/BlogPage';
+import CaseStudiesIndex from './pages/CaseStudiesIndex';
+import LandingPage from './pages/LandingPage';
+
+// Import your NavBar component
+import NavBar from './components/NavBar';
+
+// Import config
+import { API_BASE } from './config';
 import './index.css';
 
-Amplify.configure(awsConfig);
+console.info('[DEBUG] API_BASE =', API_BASE);
 
 // ─── AppContent (reusable home content) ─────────────────────────────────────
 export function AppContent({ signOut, user }) {
@@ -24,37 +33,55 @@ export function AppContent({ signOut, user }) {
   const [error, setError] = useState('');
 
   const getAuthToken = async () => {
-    const session = await fetchAuthSession();
-    return session.tokens?.idToken?.toString();
+    try {
+      const session = await Auth.currentSession();
+      // Amplify returns tokens as .getIdToken().getJwtToken()
+      return session.getIdToken().getJwtToken();
+    } catch (err) {
+      console.warn('No auth session:', err);
+      return null;
+    }
   };
 
   const authAxios = useMemo(() => {
     const instance = axios.create();
     instance.interceptors.request.use(async (config) => {
       const token = await getAuthToken();
-      config.headers.Authorization = token;
+      if (token) config.headers.Authorization = `Bearer ${token}`;
       return config;
     });
     return instance;
   }, []);
 
+  // ---------------- SAFE TEST fetch (temporary) ----------------
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError('');
       try {
-        const res = await authAxios.get('https://scalabledeploy.com/api/posts');
-        setPosts(res.data);
+        const res = await authAxios.get(`${API_BASE}/posts`);
+
+        // LOG for debugging
+        console.log('[DEBUG] api/posts type:', typeof res.data);
+        if (Array.isArray(res.data)) {
+          console.log('[DEBUG] api/posts length:', res.data.length);
+        } else {
+          console.log('[DEBUG] api/posts preview:', res.data && JSON.stringify(res.data).slice(0, 200));
+        }
+
+        // SAFETY: keep a small page of posts to avoid memory blowup (replace with real pagination later)
+        const safePosts = Array.isArray(res.data) ? res.data.slice(0, 50) : res.data;
+        setPosts(safePosts);
       } catch (err) {
-        console.error(err);
+        console.error('[DEBUG] fetch posts error', err);
         setError('Failed to load posts.');
       } finally {
         setLoading(false);
       }
     })();
   }, [authAxios]);
+  // ------------------------------------------------------------
 
-  // eslint-disable-next-line no-unused-vars
   const createPost = async () => {
     setError('');
     try {
@@ -70,13 +97,13 @@ export function AppContent({ signOut, user }) {
         ...(imageUrl && { image_url: imageUrl }),
       };
 
-      const res = await authAxios.post('https://scalabledeploy.com/api/posts', payload);
+      const res = await authAxios.post(`${API_BASE}/posts`, payload);
       setPosts([res.data, ...posts]);
       setNewTitle('');
       setNewContent('');
       setImageKey('');
     } catch (err) {
-      console.error(err);
+      console.error('[DEBUG] create post error', err);
       setError('Failed to create post.');
     }
   };
@@ -89,10 +116,10 @@ export function AppContent({ signOut, user }) {
         title: prompt('New title', post.title) || post.title,
         content: prompt('New content', post.content) || post.content,
       };
-      const res = await authAxios.put(`https://scalabledeploy.com/api/posts/${post.id}`, updated);
+      const res = await authAxios.put(`${API_BASE}/posts/${post.id}`, updated);
       setPosts(posts.map((p) => (p.id === post.id ? res.data : p)));
     } catch (err) {
-      console.error(err);
+      console.error('[DEBUG] edit post error', err);
       setError('Failed to edit post.');
     }
   };
@@ -100,17 +127,15 @@ export function AppContent({ signOut, user }) {
   const deletePost = async (id) => {
     setError('');
     try {
-      await authAxios.delete(`https://scalabledeploy.com/api/posts/${id}`);
+      await authAxios.delete(`${API_BASE}/posts/${id}`);
       setPosts(posts.filter((p) => p.id !== id));
     } catch (err) {
-      console.error(err);
+      console.error('[DEBUG] delete post error', err);
       setError('Failed to delete post.');
     }
   };
 
-  if (loading) {
-    return <div className="text-center p-8">Loading posts…</div>;
-  }
+  if (loading) return <div className="text-center p-8">Loading posts…</div>;
   if (error) {
     return (
       <div className="max-w-2xl mx-auto p-4">
@@ -124,10 +149,62 @@ export function AppContent({ signOut, user }) {
       {/* Create New Post */}
       <section className="mb-8 bg-white shadow rounded p-6">
         <h2 className="text-lg font-semibold mb-4">Create New Post</h2>
-        {/* file input and fields... */}
+
+        <label className="block mb-4">
+          <span className="text-sm font-medium">Cover Image (optional)</span>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={async (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
+
+              const { uploadUrl, key } = await authAxios
+                .get(`${API_BASE}/posts/${user.username}/upload-url`, {
+                  params: {
+                    ext: file.name.split('.').pop(),
+                    contentType: file.type,
+                  },
+                })
+                .then((r) => r.data);
+
+              await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: file,
+              });
+
+              setImageKey(key);
+            }}
+            className="mt-1 block w-full text-sm text-gray-700"
+          />
+          {imageKey && <p className="text-xs text-green-600 mt-1">Image ready to attach</p>}
+        </label>
+
+        <input
+          type="text"
+          placeholder="Title"
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          className="border rounded px-3 py-2 w-full mb-3 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        <textarea
+          rows={4}
+          placeholder="Content"
+          value={newContent}
+          onChange={(e) => setNewContent(e.target.value)}
+          className="border rounded px-3 py-2 w-full mb-3 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        <button
+          onClick={createPost}
+          disabled={!newTitle.trim() || !newContent.trim()}
+          className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          Post
+        </button>
       </section>
 
-      {/* Blog Posts List */}
+      {/* Blog Posts */}
       <section>
         <h2 className="text-xl font-semibold mb-4">Blog Posts</h2>
         {posts.length === 0 ? (
@@ -136,22 +213,14 @@ export function AppContent({ signOut, user }) {
           posts.map((p) => (
             <div key={p.id} className="bg-white shadow rounded p-5 mb-4">
               {p.image_url && (
-                <img
-                  src={p.image_url}
-                  alt="cover"
-                  className="mb-4 w-full h-48 object-cover rounded"
-                />
+                <img src={p.image_url} alt="cover" className="mb-4 w-full h-48 object-cover rounded" />
               )}
               <h3 className="text-xl font-medium mb-2">{p.title}</h3>
               <p className="text-gray-700 mb-3">{p.content}</p>
               <div className="text-sm text-gray-500 mb-4">By {p.author}</div>
               <div className="flex">
-                <button onClick={() => editPost(p)} className="text-yellow-600 hover:underline mr-4">
-                  Edit
-                </button>
-                <button onClick={() => deletePost(p.id)} className="text-red-600 hover:underline">
-                  Delete
-                </button>
+                <button onClick={() => editPost(p)} className="text-yellow-600 hover:underline mr-4">Edit</button>
+                <button onClick={() => deletePost(p.id)} className="text-red-600 hover:underline">Delete</button>
               </div>
             </div>
           ))
@@ -161,51 +230,46 @@ export function AppContent({ signOut, user }) {
   );
 }
 
-// ─── NavBar Component ───────────────────────────────────────────────────────────
-export function NavBar() {
-  return (
-    <nav className="p-4 bg-white shadow flex items-center">
-      <Link to="/" className="mr-6 font-medium hover:underline">Home</Link>
-      <Link to="/features" className="mr-6 font-medium hover:underline">Features</Link>
-      <a href="https://scalabledeploy.com/blog" target="_blank" rel="noopener noreferrer" className="mr-6 font-medium hover:underline">
-        Blog
-      </a>
-      <a href="https://www.upwork.com/…" target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
-        Hire Me
-      </a>
-    </nav>
-  );
-}
-
+// ─── App (root) ────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <Authenticator>
       {({ signOut, user }) => (
-        <BrowserRouter>
-          <div className="min-h-screen flex flex-col">
-            <NavBar />
-            <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
-              <h1 className="text-xl font-semibold">Simple Blog</h1>
-              <button onClick={signOut} className="bg-red-600 px-3 py-1 rounded hover:bg-red-700">
-                Sign Out
-              </button>
-            </header>
-            <main className="flex-grow bg-gray-50 p-6">
-              <Routes>
-                <Route path="/" element={<HomePage user={user} signOut={signOut} />} />
-                <Route path="/features" element={<FeaturesPage />} />
-                <Route path="/blog/cache" element={<ComingSoon title="Caching Deep Dive" />} />
-                <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
-              </Routes>
-            </main>
-            <footer className="bg-gray-800 text-gray-300 p-4 text-center">
-              © 2025 Omar —{' '}
-              <a href="https://github.com/omare84" target="_blank" rel="noopener noreferrer" className="underline">
-                GitHub
-              </a>
-            </footer>
-          </div>
-        </BrowserRouter>
+        <div className="min-h-screen flex flex-col">
+          {/* Use the new NavBar component */}
+          <NavBar />
+
+          <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
+            <h1 className="text-xl font-semibold">Simple Blog</h1>
+            <button
+              onClick={signOut}
+              className="bg-red-600 px-3 py-1 rounded hover:bg-red-700"
+            >
+              Sign Out
+            </button>
+          </header>
+
+          <main className="flex-grow bg-gray-50 p-6">
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/home" element={<HomePage user={user} signOut={signOut} />} />
+              <Route path="/features" element={<FeaturesPage />} />
+              <Route path="/blog" element={<BlogPage />} />
+              <Route path="/case-studies" element={<CaseStudiesIndex />} />
+              <Route path="/blog/cache" element={<ComingSoon title="Caching Deep Dive" />} />
+              <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
+              {/* Optional: 404 fallback */}
+              <Route path="*" element={<LandingPage />} />
+            </Routes>
+          </main>
+
+          <footer className="bg-gray-800 text-gray-300 p-4 text-center">
+            © 2025 Omar —{' '}
+            <a href="https://github.com/omare84" target="_blank" rel="noopener noreferrer" className="underline">
+              GitHub
+            </a>
+          </footer>
+        </div>
       )}
     </Authenticator>
   );

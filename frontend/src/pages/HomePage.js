@@ -1,15 +1,15 @@
+// frontend/src/pages/HomePage.js
 import React from 'react';
-import AppContent from '../App';   // we’ll export this from App.js
+import { AppContent } from '../App'; // <-- named import (NOT default)
 
-export default function HomePage({ user }) {
-  // AppContent expects both signOut and user, 
-  // but our <Routes> wraps HomePage inside <Authenticator>
-  // so we just forward `user` and pull signOut from context.
-  // For simplicity, we’ll re-use Authenticator logic in App.js instead.
+/**
+ * HomePage simply forwards user + signOut into AppContent (the real home UI).
+ * Avoid importing the default App here — that would render the whole app recursively.
+ */
+export default function HomePage({ user, signOut }) {
   return (
     <div>
-      {/* You can also copy/paste all of AppContent here directly */}
-      <AppContent user={user} />
+      <AppContent user={user} signOut={signOut} />
     </div>
   );
 }
