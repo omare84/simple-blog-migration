@@ -1,7 +1,12 @@
-// simple-blog-backend/updatePost.js
-
 const { Client } = require("pg");
 const Redis = require("ioredis");
+
+// CORS headers configuration
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'OPTIONS,PUT'
+};
 
 let redisClient;
 let cacheDisabled = false;
@@ -52,12 +57,24 @@ async function connectClient() {
 }
 
 exports.handler = async (event) => {
+  // Handle OPTIONS preflight request
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: CORS_HEADERS,
+      body: '',
+    };
+  }
+
   // Ensure ID is provided
   const id = event.pathParameters?.id;
   if (!id) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "Missing post ID in path" }),
     };
   }
@@ -69,7 +86,10 @@ exports.handler = async (event) => {
   } catch {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "Invalid JSON in request body" }),
     };
   }
@@ -78,7 +98,10 @@ exports.handler = async (event) => {
   if (!title || !content || !author) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "Missing title, content, or author" }),
     };
   }
@@ -95,7 +118,10 @@ exports.handler = async (event) => {
     if (res.rows.length === 0) {
       return {
         statusCode: 404,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          ...CORS_HEADERS,
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ message: "Post not found" }),
       };
     }
@@ -114,7 +140,10 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify(res.rows[0]),
     };
   } catch (err) {
@@ -124,7 +153,10 @@ exports.handler = async (event) => {
     }
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "Error updating post" }),
     };
   }

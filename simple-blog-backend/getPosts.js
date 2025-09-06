@@ -1,7 +1,12 @@
-// simple-blog-backend/getPosts.js
-
 const { Client } = require("pg");
 const Redis = require("ioredis");
+
+// CORS headers configuration
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'OPTIONS,GET'
+};
 
 let redisClient;
 let cacheDisabled = false;
@@ -52,6 +57,15 @@ async function connectClient() {
 }
 
 exports.handler = async (event) => {
+  // Handle OPTIONS preflight request
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: CORS_HEADERS,
+      body: '',
+    };
+  }
+
   console.log("🟢 getPosts invoked");
 
   const redis = getRedisClient();
@@ -70,7 +84,10 @@ exports.handler = async (event) => {
         console.log("🟢 Cache hit");
         return {
           statusCode: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...CORS_HEADERS,
+            "Content-Type": "application/json"
+          },
           body: cached,
         };
       }
@@ -89,7 +106,10 @@ exports.handler = async (event) => {
     console.error("🔴 DB connect failed:", dbConnErr);
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: dbConnErr.message }),
     };
   }
@@ -114,7 +134,10 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body,
     };
   } catch (queryErr) {
@@ -122,7 +145,10 @@ exports.handler = async (event) => {
     if (client) await client.end();
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "Error fetching posts" }),
     };
   }

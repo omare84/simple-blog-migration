@@ -1,7 +1,12 @@
-// simple-blog-backend/createPost.js
-
 const { Client } = require("pg");
 const Redis = require("ioredis");
+
+// CORS headers configuration
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'OPTIONS,POST'
+};
 
 let redisClient;
 let cacheDisabled = false;
@@ -53,6 +58,15 @@ async function connectClient() {
 }
 
 exports.handler = async (event) => {
+  // Handle OPTIONS preflight request
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: CORS_HEADERS,
+      body: '',
+    };
+  }
+
   console.log("RAW event.body:", event.body);
 
   let payload;
@@ -62,6 +76,7 @@ exports.handler = async (event) => {
     console.error("Invalid JSON:", event.body);
     return {
       statusCode: 400,
+      headers: CORS_HEADERS,
       body: JSON.stringify({ message: "Invalid JSON in request body" }),
     };
   }
@@ -91,14 +106,20 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 201,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify(created),
     };
   } catch (err) {
     console.error("Error inserting post:", err);
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "Error creating post" }),
     };
   } finally {
