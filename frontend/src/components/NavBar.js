@@ -10,10 +10,11 @@ export default function NavBar() {
           <Link to="/" className="font-bold text-lg">Simple Blog</Link>
           <Link to="/features" className="text-sm hover:underline">Features</Link>
           <Link to="/blog" className="text-sm hover:underline">Blog</Link>
-          <Link to="/case-studies" className="text-sm hover:underline">Case Studies</Link>
         </div>
 
-        <div>
+        <div className="flex items-center space-x-6">
+          <Link to="/case-studies" className="text-sm hover:underline">Case Studies</Link>
+          <Link to="/home" className="text-sm px-3 py-1 bg-indigo-50 rounded hover:underline">Sign In</Link>
           <a
             href="https://www.upwork.com/freelancers/~01fc1ccac3e5af5062"
             target="_blank"
