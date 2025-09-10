@@ -1,0 +1,1 @@
+export default function ImageUpload(){ return <div className='p-6'>Image upload case study (coming soon)</div> }

@@ -13,6 +13,7 @@ import ComingSoon from './pages/ComingSoon';
 import BlogPage from './pages/BlogPage';
 import CaseStudiesIndex from './pages/CaseStudiesIndex';
 import LandingPage from './pages/LandingPage';
+import CaseStudyCaching from './pages/case-studies/CaseStudyCaching'; // NEW IMPORT
 
 // components
 import NavBar from './components/NavBar';
@@ -231,7 +232,7 @@ export default function App() {
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/blog" element={<BlogPage />} />
           <Route path="/case-studies" element={<CaseStudiesIndex />} />
-          <Route path="/blog/cache" element={<ComingSoon title="Caching Deep Dive" />} />
+          <Route path="/case-studies/caching" element={<CaseStudyCaching />} /> {/* NEW ROUTE */}
           <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
 
           <Route path="*" element={<LandingPage />} />
