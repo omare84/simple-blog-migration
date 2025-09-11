@@ -1,4 +1,4 @@
-﻿// frontend/src/pages/case-studies/CaseStudyCaching.js
+// frontend/src/pages/case-studies/CaseStudyCaching.js
 import React from 'react';
 
 export default function CaseStudyCaching() {
