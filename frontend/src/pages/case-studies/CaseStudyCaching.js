@@ -1,6 +1,5 @@
-﻿// src/pages/case-studies/CaseStudyCaching.js
+// src/pages/case-studies/CaseStudyCaching.js
 import React from 'react';
-import ComingSoon from '../ComingSoon'; // optional reuse if you want placeholders
 
 export default function CaseStudyCaching() {
   return (
@@ -77,4 +76,6 @@ aws elasticache restore-cache-cluster-from-snapshot --cache-cluster-id my-test-r
     </div>
   );
 }
+
+
 
