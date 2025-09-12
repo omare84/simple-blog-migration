@@ -10,7 +10,6 @@ export default function NavBar() {
           <Link to="/" className="font-bold text-lg">Simple Blog</Link>
           <Link to="/features" className="text-sm hover:underline">Features</Link>
           <Link to="/blog" className="text-sm hover:underline">Blog</Link>
-          <Link to="/case-studies/caching" className="text-sm hover:underline">Caching Deep Dive</Link>
         </div>
 
         <div className="flex items-center space-x-6">
