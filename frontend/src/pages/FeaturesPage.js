@@ -36,10 +36,10 @@ export default function FeaturesPage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl mb-4">Services — What I do</h1>
+      <h1 className="text-2xl mb-4">Services — What We do</h1>
 
       <p className="text-gray-700 mb-6">
-        I help teams ship practical cloud fixes and improvements: migrations, performance triage, caching,
+        We help teams ship practical cloud fixes and improvements: migrations, performance triage, caching,
         deploy hardening, and local dev workflows. Below are typical engagements and what you get.
       </p>
 
@@ -65,7 +65,7 @@ export default function FeaturesPage() {
         <h2 className="text-xl mb-2">How I work</h2>
         <ol className="list-decimal pl-5 text-gray-700">
           <li>Discovery: collect artifacts (CloudWatch, Cost Explorer, repo link).</li>
-          <li>Short triage and quick wins (audit report + prioritized fixes).</li>
+          <li>Short diagnosis and quick wins (audit report + prioritized fixes).</li>
           <li>Optional implementation: IaC + deployment + tests.</li>
           <li>Handover: documentation + small runbook for your team.</li>
         </ol>
@@ -80,7 +80,7 @@ export default function FeaturesPage() {
           rel="noopener noreferrer"
           className="inline-block px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
         >
-          Hire Me
+          Work With Us
         </a>
         <Link to="/case-studies" className="ml-3 inline-block px-4 py-2 border rounded">
           View Case Studies

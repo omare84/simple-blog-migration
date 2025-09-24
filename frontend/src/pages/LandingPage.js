@@ -7,9 +7,9 @@ export default function LandingPage() {
     <div className="max-w-4xl mx-auto p-8">
       <header className="text-center mb-8">
         <h1 className="text-4xl font-bold mb-2">ScalableDeploy</h1>
-        <p className="text-xl text-gray-700 mb-2">Serverless on AWS — practical, cost-efficient engineering</p>
+        <p className="text-xl text-gray-700 mb-2">Serverless on AWS - practical, cost-efficient engineering</p>
         <p className="text-gray-600 max-w-2xl mx-auto">
-          I build and operate small-to-medium production systems on AWS: serverless APIs, RDS-backed apps,
+          We build and operate small-to-medium production systems on AWS: serverless APIs, RDS-backed apps,
           Redis caching, CI/CD and CloudFront delivery. Real improvements — lower latency, predictable costs,
           and repeatable infrastructure.
         </p>
@@ -60,8 +60,7 @@ export default function LandingPage() {
       <section className="bg-white shadow rounded p-6">
         <h3 className="text-lg font-semibold mb-2">Need help with your AWS stack?</h3>
         <p className="text-sm text-gray-700 mb-4">
-          I offer short audits (prioritized fixes) and implementation work. Typical wins: CloudFront invalidation,
-          caching, cost optimizations, and safer deploy pipelines.
+          We offer short audits (prioritized fixes) and implementation work. 
         </p>
         <div className="flex space-x-3">
           <a

@@ -21,7 +21,7 @@ export default function NavBar() {
             rel="noopener noreferrer"
             className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
           >
-            Hire Me
+            Work With Us
           </a>
         </div>
       </div>
