@@ -62,7 +62,7 @@ export default function FeaturesPage() {
       </div>
 
       <section className="mt-8">
-        <h2 className="text-xl mb-2">How I work</h2>
+        <h2 className="text-xl mb-2">How We work</h2>
         <ol className="list-decimal pl-5 text-gray-700">
           <li>Discovery: collect artifacts (CloudWatch, Cost Explorer, repo link).</li>
           <li>Short diagnosis and quick wins (audit report + prioritized fixes).</li>
