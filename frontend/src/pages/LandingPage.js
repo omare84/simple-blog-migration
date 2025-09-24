@@ -6,21 +6,25 @@ export default function LandingPage() {
   return (
     <div className="max-w-4xl mx-auto p-8">
       <header className="text-center mb-8">
-        <h1 className="text-4xl font-bold mb-2">ScalableDeploy</h1>
-        <p className="text-xl text-gray-700 mb-2">Serverless on AWS - practical, cost-efficient engineering</p>
-        <p className="text-gray-600 max-w-2xl mx-auto">
-          We build and operate small-to-medium production systems on AWS: serverless APIs, RDS-backed apps,
-          Redis caching, CI/CD and CloudFront delivery. Real improvements — lower latency, predictable costs,
-          and repeatable infrastructure.
-        </p>
+        <div className="flex flex-col md:flex-row items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold mb-2">ScalableDeploy</h1>
+            <p className="text-xl text-gray-700 mb-2">Serverless on AWS - practical, cost-efficient engineering</p>
+            <p className="text-gray-600 max-w-2xl mx-auto md:mx-0">
+              We build and operate small-to-medium production systems on AWS: serverless APIs, RDS-backed apps,
+              Redis caching, CI/CD and CloudFront delivery. Real improvements — lower latency, predictable costs,
+              and repeatable infrastructure.
+            </p>
+          </div>
 
-        <div className="mt-6 space-x-3">
-          <Link to="/blog" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
-            View Recent Posts
-          </Link>
-          <Link to="/case-studies" className="px-4 py-2 border rounded hover:shadow">
-            Read Case Studies
-          </Link>
+          <div className="flex gap-3">
+            <Link to="/blog" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+              View Recent Posts
+            </Link>
+            <Link to="/case-studies" className="px-4 py-2 border rounded hover:shadow">
+              Read Case Studies
+            </Link>
+          </div>
         </div>
       </header>
 
