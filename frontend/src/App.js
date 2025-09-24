@@ -211,7 +211,7 @@ export default function App() {
       <NavBar />
 
       <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
-        <h1 className="text-xl font-semibold"></h1>
+        <h1 className="text-xl font-semibold">Scalable Deploy</h1>
       </header>
 
       <main className="flex-grow bg-gray-50 p-6">
