@@ -4,79 +4,46 @@ import { Link } from 'react-router-dom';
 
 export default function LandingPage() {
   return (
-    <div className="max-w-4xl mx-auto p-8">
+    <div className="max-w-4xl mx-auto p-6">
       <header className="text-center mb-8">
-        <div className="flex flex-col md:flex-row items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold mb-2">ScalableDeploy</h1>
-            <p className="text-xl text-gray-700 mb-2">Serverless on AWS - practical, cost-efficient engineering</p>
-            <p className="text-gray-600 max-w-2xl mx-auto md:mx-0">
-              We build and operate small-to-medium production systems on AWS: serverless APIs, RDS-backed apps,
-              Redis caching, CI/CD and CloudFront delivery. Real improvements — lower latency, predictable costs,
-              and repeatable infrastructure.
-            </p>
-          </div>
-
-          <div className="flex gap-3">
-            <Link to="/blog" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
-              View Recent Posts
-            </Link>
-            <Link to="/case-studies" className="px-4 py-2 border rounded hover:shadow">
-              Read Case Studies
-            </Link>
-          </div>
+        <h1 className="text-4xl font-bold mb-2">ScalableDeploy</h1>
+        <p className="text-gray-600">
+          Serverless & cloud-first solutions on AWS - practical fixes that cut cost, improve performance and speed up development.
+        </p>
+        <div className="mt-4 space-x-3">
+          <Link to="/blog" className="px-4 py-2 bg-indigo-600 text-white rounded">View Recent Posts</Link>
+          <Link to="/case-studies" className="px-4 py-2 border rounded">Read Case Studies</Link>
         </div>
       </header>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="p-4 border rounded">
-          <h3 className="font-semibold">Image Upload</h3>
-          <p className="text-sm text-gray-600">Secure presigned URLs + CloudFront delivery for performant media.</p>
-        </div>
-        <div className="p-4 border rounded">
-          <h3 className="font-semibold">Caching</h3>
-          <p className="text-sm text-gray-600">ElastiCache (Redis) with graceful fallback to RDS for resilience.</p>
-        </div>
-        <div className="p-4 border rounded">
-          <h3 className="font-semibold">Authentication</h3>
-          <p className="text-sm text-gray-600">Cognito user pools for sign-up, sign-in, and secure access control.</p>
-        </div>
+      {/* What I build (friendly, non-technical) */}
+      <section className="mb-8 bg-white shadow-sm rounded p-5">
+        <h2 className="text-xl font-semibold mb-2">What We build</h2>
+        <p className="text-gray-700 mb-3">
+          We help small teams and startups fix the problems that cost time and money — faster APIs, simpler deploys, safer file uploads, and targeted cost reductions.
+        </p>
+        <ul className="list-disc pl-5 text-gray-700">
+          <li>Fast and reliable serverless APIs</li>
+          <li>Secure uploads + CDN delivery</li>
+          <li>Caching to improve latency and reduce DB load</li>
+          <li>Deploy pipelines and affordable infra design</li>
+        </ul>
       </section>
 
-      <section className="mb-8">
+      <section>
         <h2 className="text-2xl font-bold mb-3">Selected Case Studies</h2>
         <div className="space-y-4">
           <Link to="/case-studies/caching" className="block p-4 border rounded hover:shadow">
             <h4 className="font-semibold">Caching Deep Dive</h4>
-            <p className="text-sm text-gray-600">Redis caching with RDS fallback — measurable latency and cost savings.</p>
+            <p className="text-sm text-gray-600">How Redis caching reduced latency and cut dev costs.</p>
           </Link>
           <Link to="/case-studies/image-upload" className="block p-4 border rounded hover:shadow">
             <h4 className="font-semibold">Image Upload Walkthrough</h4>
-            <p className="text-sm text-gray-600">Presigned URL flow, CloudFront configuration, and security notes.</p>
+            <p className="text-sm text-gray-600">Presigned URL flow, secure uploads, and CloudFront delivery.</p>
           </Link>
-          <Link to="/case-studies/vpc-endpoint-cost" className="block p-4 border rounded hover:shadow">
+          <Link to="/case-studies/vpc-endpoint" className="block p-4 border rounded hover:shadow">
             <h4 className="font-semibold">VPC Endpoint Cost Optimization</h4>
-            <p className="text-sm text-gray-600">Small infra change, clear cost impact — ideal dev-environment optimization.</p>
-          </Link>
-        </div>
-      </section>
-
-      <section className="bg-white shadow rounded p-6">
-        <h3 className="text-lg font-semibold mb-2">Need help with your AWS stack?</h3>
-        <p className="text-sm text-gray-700 mb-4">
-          We offer short audits (prioritized fixes) and implementation work. 
-        </p>
-        <div className="flex space-x-3">
-          <a
-            href="https://www.upwork.com/freelancers/~01fc1ccac3e5af5062"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-          >
-            Hire Me
-          </a>
-          <Link to="/case-studies" className="px-4 py-2 border rounded">
-            Explore Case Studies
+            <p className="text-sm text-gray-600">Small infra change, clear cost impact — ideal for dev environments.</p>
           </Link>
         </div>
       </section>
