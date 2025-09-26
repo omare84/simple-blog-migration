@@ -37,6 +37,7 @@ Globals:
         DB_USER:        !Ref DatabaseUser
         DB_PASS:        !Sub '{{resolve:secretsmanager:${DatabasePasswordArn}:SecretString:password}}'
         REDIS_ENDPOINT: my-test-redis.7o4zyy.ng.0001.use2.cache.amazonaws.com:6379
+        UPLOADS_BASE:   "https://simple-blog-uploads-omare84.s3.amazonaws.com"
 
 Resources:
 
