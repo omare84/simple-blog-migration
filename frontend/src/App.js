@@ -24,7 +24,7 @@ import './index.css';
 
 console.info('[DEBUG] API_BASE =', API_BASE);
 
-// ─── AppContent (reusable home content) ─────────────────────────────────────
+// ─── AppContent (reusable admin/CMS interface used by HomePage) ────────────
 export function AppContent({ signOut, user }) {
   const [posts, setPosts] = useState([]);
   const [newTitle, setNewTitle] = useState('');
@@ -36,6 +36,7 @@ export function AppContent({ signOut, user }) {
   const getAuthToken = async () => {
     try {
       const session = await Auth.currentSession();
+      // Amplify returns tokens as .getIdToken().getJwtToken()
       return session.getIdToken().getJwtToken();
     } catch (err) {
       console.warn('No auth session:', err);
@@ -73,12 +74,13 @@ export function AppContent({ signOut, user }) {
   const createPost = async () => {
     setError('');
     try {
+      // Fallback for uploads if backend returns only image_key
       const UPLOADS_BASE = 'https://simple-blog-uploads-omare84.s3.amazonaws.com';
 
       const payload = {
         title: newTitle,
         content: newContent,
-        author: user?.username || 'unknown',
+        author: (user && user.username) || 'unknown',
         ...(imageKey && { image_key: imageKey }),
       };
 
@@ -151,12 +153,20 @@ export function AppContent({ signOut, user }) {
               if (!file) return;
 
               const { uploadUrl, key } = await authAxios
-                .get(`${API_BASE}/posts/${user.username}/upload-url`, {
-                  params: { ext: file.name.split('.').pop(), contentType: file.type },
+                .get(`${API_BASE}/posts/${(user && user.username) || 'unknown'}/upload-url`, {
+                  params: {
+                    ext: file.name.split('.').pop(),
+                    contentType: file.type,
+                  },
                 })
                 .then((r) => r.data);
 
-              await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+              await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: file,
+              });
+
               setImageKey(key);
             }}
             className="mt-1 block w-full text-sm text-gray-700"
@@ -187,7 +197,7 @@ export function AppContent({ signOut, user }) {
         </button>
       </section>
 
-      {/* Posts List */}
+      {/* Blog Posts */}
       <section>
         <h2 className="text-xl font-semibold mb-4">Blog Posts</h2>
         {posts.length === 0 ? (
@@ -195,7 +205,9 @@ export function AppContent({ signOut, user }) {
         ) : (
           posts.map((p) => (
             <div key={p.id} className="bg-white shadow rounded p-5 mb-4">
-              {p.image_url && <img src={p.image_url} alt="cover" className="mb-4 w-full h-48 object-cover rounded" />}
+              {p.image_url && (
+                <img src={p.image_url} alt="cover" className="mb-4 w-full h-48 object-cover rounded" />
+              )}
               <h3 className="text-xl font-medium mb-2">{p.title}</h3>
               <p className="text-gray-700 mb-3">{p.content}</p>
               <div className="text-sm text-gray-500 mb-4">By {p.author}</div>
@@ -214,51 +226,44 @@ export function AppContent({ signOut, user }) {
 // ─── Root App ────────────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <Authenticator>
-      {({ signOut, user }) => (
-        <div className="min-h-screen flex flex-col">
-          {/* pass user/signOut to NavBar if you want NavBar to show auth state */}
-          <NavBar user={user} signOut={signOut} />
+    <div className="min-h-screen flex flex-col">
+      <NavBar />
 
-          <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
-            <h1 className="text-xl font-semibold">ScalableDeploy</h1>
+      <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
+        <h1 className="text-xl font-semibold">ScalableDeploy</h1>
+      </header>
 
-            {user ? (
-              <div className="flex items-center space-x-4">
-                <div className="text-sm text-gray-200">Signed in: {user.username}</div>
-                <button
-                  onClick={signOut}
-                  className="bg-red-600 px-3 py-1 rounded hover:bg-red-700"
-                >
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <div />
-            )}
-          </header>
+      <main className="flex-grow bg-gray-50 p-6">
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
 
-          <main className="flex-grow bg-gray-50 p-6">
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/home" element={<HomePage user={user} signOut={signOut} />} />
-              <Route path="/features" element={<FeaturesPage />} />
-              <Route path="/blog" element={<BlogPage />} />
-              <Route path="/case-studies" element={<CaseStudiesIndex />} />
-              <Route path="/case-studies/caching" element={<CaseStudyCaching />} />
-              <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
-              <Route path="*" element={<LandingPage />} />
-            </Routes>
-          </main>
+          {/* Protect only /home with Amplify Authenticator */}
+          <Route
+            path="/home"
+            element={
+              <Authenticator>
+                {({ signOut, user }) => <HomePage user={user} signOut={signOut} />}
+              </Authenticator>
+            }
+          />
 
-          <footer className="bg-gray-800 text-gray-300 p-4 text-center">
-            © {new Date().getFullYear()} Omar —{' '}
-            <a href="https://github.com/omare84" target="_blank" rel="noopener noreferrer" className="underline">
-              GitHub
-            </a>
-          </footer>
-        </div>
-      )}
-    </Authenticator>
+          {/* Public pages */}
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/case-studies" element={<CaseStudiesIndex />} />
+          <Route path="/case-studies/caching" element={<CaseStudyCaching />} />
+          <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
+
+          <Route path="*" element={<LandingPage />} />
+        </Routes>
+      </main>
+
+      <footer className="bg-gray-800 text-gray-300 p-4 text-center">
+        © {new Date().getFullYear()} Omar —{' '}
+        <a href="https://github.com/omare84" target="_blank" rel="noopener noreferrer" className="underline">
+          GitHub
+        </a>
+      </footer>
+    </div>
   );
 }
