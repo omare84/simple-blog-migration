@@ -71,28 +71,39 @@ export function AppContent({ signOut, user }) {
   }, [authAxios]);
 
   const createPost = async () => {
-    setError('');
-    try {
-      let imageUrl = '';
-      if (imageKey) imageUrl = `https://${window.location.host}/uploads/${imageKey}`;
+  setError('');
+  try {
+    // If you store uploads behind a CloudFront or S3 public URL, set it here.
+    // Replace with your CloudFront domain or S3 bucket public URL if you want a fallback.
+    const UPLOADS_BASE = 'https://simple-blog-uploads-omare84.s3.amazonaws.com';
 
-      const payload = {
-        title: newTitle,
-        content: newContent,
-        author: user.username,
-        ...(imageUrl && { image_url: imageUrl }),
-      };
+    // If we uploaded a file earlier, the flow sets imageKey; send that to backend.
+    const payload = {
+      title: newTitle,
+      content: newContent,
+      author: user.username,
+      ...(imageKey && { image_key: imageKey }),
+    };
 
-      const res = await authAxios.post(`${API_BASE}/posts`, payload);
-      setPosts([res.data, ...posts]);
-      setNewTitle('');
-      setNewContent('');
-      setImageKey('');
-    } catch (err) {
-      console.error('[DEBUG] create post error', err);
-      setError('Failed to create post.');
+    const res = await authAxios.post(`${API_BASE}/posts`, payload);
+    // Backend should ideally return the full created post including image_url.
+    const created = res.data;
+
+    // If backend didn't return image_url but did return image_key, build fallback URL.
+    if (!created.image_url && created.image_key) {
+      created.image_url = `${UPLOADS_BASE}/${created.image_key}`;
     }
-  };
+
+    setPosts([created, ...posts]);
+    setNewTitle('');
+    setNewContent('');
+    setImageKey('');
+  } catch (err) {
+    console.error('[DEBUG] create post error', err);
+    setError('Failed to create post.');
+  }
+};
+
 
   const editPost = async (post) => {
     setError('');
@@ -208,7 +219,7 @@ export function AppContent({ signOut, user }) {
 export default function App() {
   return (
     <div className="min-h-screen flex flex-col">
-      <NavBar />
+      <NavBar user={user} signOut={signOut} />
 
       <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
         <h1 className="text-xl font-semibold">Scalable Deploy</h1>
