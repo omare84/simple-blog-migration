@@ -71,39 +71,33 @@ export function AppContent({ signOut, user }) {
   }, [authAxios]);
 
   const createPost = async () => {
-  setError('');
-  try {
-    // If you store uploads behind a CloudFront or S3 public URL, set it here.
-    // Replace with your CloudFront domain or S3 bucket public URL if you want a fallback.
-    const UPLOADS_BASE = 'https://simple-blog-uploads-omare84.s3.amazonaws.com';
+    setError('');
+    try {
+      const UPLOADS_BASE = 'https://simple-blog-uploads-omare84.s3.amazonaws.com';
 
-    // If we uploaded a file earlier, the flow sets imageKey; send that to backend.
-    const payload = {
-      title: newTitle,
-      content: newContent,
-      author: user.username,
-      ...(imageKey && { image_key: imageKey }),
-    };
+      const payload = {
+        title: newTitle,
+        content: newContent,
+        author: user?.username || 'unknown',
+        ...(imageKey && { image_key: imageKey }),
+      };
 
-    const res = await authAxios.post(`${API_BASE}/posts`, payload);
-    // Backend should ideally return the full created post including image_url.
-    const created = res.data;
+      const res = await authAxios.post(`${API_BASE}/posts`, payload);
+      const created = res.data;
 
-    // If backend didn't return image_url but did return image_key, build fallback URL.
-    if (!created.image_url && created.image_key) {
-      created.image_url = `${UPLOADS_BASE}/${created.image_key}`;
+      if (!created.image_url && created.image_key) {
+        created.image_url = `${UPLOADS_BASE}/${created.image_key}`;
+      }
+
+      setPosts([created, ...posts]);
+      setNewTitle('');
+      setNewContent('');
+      setImageKey('');
+    } catch (err) {
+      console.error('[DEBUG] create post error', err);
+      setError('Failed to create post.');
     }
-
-    setPosts([created, ...posts]);
-    setNewTitle('');
-    setNewContent('');
-    setImageKey('');
-  } catch (err) {
-    console.error('[DEBUG] create post error', err);
-    setError('Failed to create post.');
-  }
-};
-
+  };
 
   const editPost = async (post) => {
     setError('');
@@ -133,11 +127,13 @@ export function AppContent({ signOut, user }) {
   };
 
   if (loading) return <div className="text-center p-8">Loading posts…</div>;
-  if (error) return (
-    <div className="max-w-2xl mx-auto p-4">
-      <div className="bg-red-100 text-red-800 p-3 rounded">{error}</div>
-    </div>
-  );
+  if (error) {
+    return (
+      <div className="max-w-2xl mx-auto p-4">
+        <div className="bg-red-100 text-red-800 p-3 rounded">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-5">
@@ -218,44 +214,51 @@ export function AppContent({ signOut, user }) {
 // ─── Root App ────────────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col">
-      <NavBar user={user} signOut={signOut} />
+    <Authenticator>
+      {({ signOut, user }) => (
+        <div className="min-h-screen flex flex-col">
+          {/* pass user/signOut to NavBar if you want NavBar to show auth state */}
+          <NavBar user={user} signOut={signOut} />
 
-      <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
-        <h1 className="text-xl font-semibold">Scalable Deploy</h1>
-      </header>
+          <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
+            <h1 className="text-xl font-semibold">ScalableDeploy</h1>
 
-      <main className="flex-grow bg-gray-50 p-6">
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
+            {user ? (
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-200">Signed in: {user.username}</div>
+                <button
+                  onClick={signOut}
+                  className="bg-red-600 px-3 py-1 rounded hover:bg-red-700"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
+          </header>
 
-          {/* Protected admin/CMS route — Amplify Authenticator handles sign-in here */}
-          <Route
-            path="/home"
-            element={
-              <Authenticator>
-                {({ signOut, user }) => <HomePage user={user} signOut={signOut} />}
-              </Authenticator>
-            }
-          />
+          <main className="flex-grow bg-gray-50 p-6">
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/home" element={<HomePage user={user} signOut={signOut} />} />
+              <Route path="/features" element={<FeaturesPage />} />
+              <Route path="/blog" element={<BlogPage />} />
+              <Route path="/case-studies" element={<CaseStudiesIndex />} />
+              <Route path="/case-studies/caching" element={<CaseStudyCaching />} />
+              <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
+              <Route path="*" element={<LandingPage />} />
+            </Routes>
+          </main>
 
-          {/* Public pages */}
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/case-studies" element={<CaseStudiesIndex />} />
-          <Route path="/case-studies/caching" element={<CaseStudyCaching />} /> {/* NEW ROUTE */}
-          <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
-
-          <Route path="*" element={<LandingPage />} />
-        </Routes>
-      </main>
-
-      <footer className="bg-gray-800 text-gray-300 p-4 text-center">
-        © 2025 Omar —{' '}
-        <a href="https://github.com/omare84" target="_blank" rel="noopener noreferrer" className="underline">
-          GitHub
-        </a>
-      </footer>
-    </div>
+          <footer className="bg-gray-800 text-gray-300 p-4 text-center">
+            © {new Date().getFullYear()} Omar —{' '}
+            <a href="https://github.com/omare84" target="_blank" rel="noopener noreferrer" className="underline">
+              GitHub
+            </a>
+          </footer>
+        </div>
+      )}
+    </Authenticator>
   );
 }
