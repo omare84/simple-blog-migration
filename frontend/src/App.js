@@ -209,7 +209,7 @@ export function AppContent({ signOut, user }) {
                 <img src={p.image_url} alt="cover" className="mb-4 w-full h-48 object-cover rounded" />
               )}
               <h3 className="text-xl font-medium mb-2">{p.title}</h3>
-              <div className="text-gray-700 mb-3 whitespace-pre-wrap">{p.content}</div>
+              <div className="text-gray-700 mb-3" style={{ whiteSpace: 'pre-wrap' }}>{p.content}</div>
               <div className="text-sm text-gray-500 mb-4">By {p.author}</div>
               <div className="flex">
                 <button onClick={() => editPost(p)} className="text-yellow-600 hover:underline mr-4">Edit</button>
