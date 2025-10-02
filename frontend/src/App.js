@@ -75,7 +75,7 @@ export function AppContent({ signOut, user }) {
     setError('');
     try {
       // Fallback for uploads if backend returns only image_key
-      const UPLOADS_BASE = 'https://simple-blog-uploads-omare84.s3.amazonaws.com';
+      const UPLOADS_BASE = 'https://scalabledeploy.com/uploads/posts/omare';
 
       const payload = {
         title: newTitle,
