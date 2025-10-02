@@ -42,7 +42,7 @@ export default function BlogPage() {
       {posts.map((p) => (
         <article key={p.id} className="p-4 border rounded mb-4">
           <h3 className="font-bold">{p.title}</h3>
-          <p className="text-gray-700">{p.content}</p>
+          <div className="text-gray-700 whitespace-pre-wrap">{post.content}</div>
           <small className="text-gray-500">By {p.author}</small>
         </article>
       ))}
