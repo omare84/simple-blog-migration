@@ -21,7 +21,7 @@ exports.handler = async (event) => {
 
   const postId = event.pathParameters?.id;
   const extension = event.queryStringParameters?.ext || 'jpg';
-  const key = `posts/${postId || 'misc'}/${uuidv4()}.${extension}`;
+  const key = `uploads/posts/${postId || 'misc'}/${uuidv4()}.${extension}`;
 
   const params = {
     Bucket: process.env.UPLOADS_BUCKET,
