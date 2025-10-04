@@ -13,7 +13,7 @@ import ComingSoon from './pages/ComingSoon';
 import BlogPage from './pages/BlogPage';
 import CaseStudiesIndex from './pages/CaseStudiesIndex';
 import LandingPage from './pages/LandingPage';
-import CaseStudyCaching from './pages/case-studies/CaseStudyCaching'; // NEW IMPORT
+import CaseStudyCaching from './pages/case-studies/CaseStudyCaching';
 
 // components
 import NavBar from './components/NavBar';
@@ -23,6 +23,14 @@ import { API_BASE } from './config';
 import './index.css';
 
 console.info('[DEBUG] API_BASE =', API_BASE);
+
+// ─── URL Helper ──────────────────────────────────────────────────────────────
+function joinUrl(base, path) {
+  if (!base) return path || '';
+  const b = base.replace(/\/+$/, '');        // remove trailing slashes
+  const p = (path || '').replace(/^\/+/, ''); // remove leading slashes
+  return `${b}/${p}`;
+}
 
 // ─── AppContent (reusable admin/CMS interface used by HomePage) ────────────
 export function AppContent({ signOut, user }) {
@@ -36,7 +44,6 @@ export function AppContent({ signOut, user }) {
   const getAuthToken = async () => {
     try {
       const session = await Auth.currentSession();
-      // Amplify returns tokens as .getIdToken().getJwtToken()
       return session.getIdToken().getJwtToken();
     } catch (err) {
       console.warn('No auth session:', err);
@@ -74,8 +81,8 @@ export function AppContent({ signOut, user }) {
   const createPost = async () => {
     setError('');
     try {
-      // Fallback for uploads if backend returns only image_key
-      const UPLOADS_BASE = 'https://scalabledeploy.com';
+      // Best: prefer an explicit env var, fallback to current host
+      const UPLOADS_BASE = process.env.REACT_APP_UPLOADS_BASE || `https://${window.location.host}`;
 
       const payload = {
         title: newTitle,
@@ -87,8 +94,11 @@ export function AppContent({ signOut, user }) {
       const res = await authAxios.post(`${API_BASE}/posts`, payload);
       const created = res.data;
 
+      console.debug('[DEBUG] created post', created);
+
+      // If backend returned full image_url already, use it. Otherwise build safely from image_key.
       if (!created.image_url && created.image_key) {
-        created.image_url = `${UPLOADS_BASE}/${created.image_key}`;
+        created.image_url = joinUrl(UPLOADS_BASE, created.image_key);
       }
 
       setPosts([created, ...posts]);
@@ -206,7 +216,12 @@ export function AppContent({ signOut, user }) {
           posts.map((p) => (
             <div key={p.id} className="bg-white shadow rounded p-5 mb-4">
               {p.image_url && (
-                <img src={p.image_url} alt="cover" className="mb-4 w-full h-48 object-cover rounded" />
+                <img
+                  src={p.image_url}
+                  alt="cover"
+                  className="mb-4 w-full h-48 object-cover rounded"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; console.warn('img load error', p.image_url); }}
+                />
               )}
               <h3 className="text-xl font-medium mb-2">{p.title}</h3>
               <div className="text-gray-700 mb-3" style={{ whiteSpace: 'pre-wrap' }}>{p.content}</div>
