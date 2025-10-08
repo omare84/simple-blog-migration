@@ -1,16 +1,31 @@
-// createPost.js (Lambda)
+// simple-blog-backend/createPost.js
 const { Client } = require("pg");
 const Redis = require("ioredis");
 
 // CORS headers configuration
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
-  'Access-Control-Allow-Methods': 'OPTIONS,POST'
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
+  "Access-Control-Allow-Methods": "OPTIONS,POST",
 };
 
 let redisClient;
 let cacheDisabled = false;
+
+function createRedis(ep) {
+  if (!ep) return null;
+  const [host, port] = ep.includes(":") ? ep.split(":") : [ep, undefined];
+  const opts = port ? { host, port: parseInt(port, 10) } : { host };
+  const client = new Redis(opts);
+  client.on("error", (err) => {
+    console.warn("Redis error event:", err && err.message ? err.message : err);
+    cacheDisabled = true;
+    try {
+      client.disconnect();
+    } catch (e) {}
+  });
+  return client;
+}
 
 function getRedisClient() {
   if (cacheDisabled) return null;
@@ -20,17 +35,10 @@ function getRedisClient() {
       cacheDisabled = true;
       return null;
     }
-    const [host, port] = ep.split(":");
     try {
-      redisClient = new Redis({ host, port });
-      // if any error occurs on the client, disable caching permanently
-      redisClient.on("error", (err) => {
-        console.warn("Redis error, disabling cache:", err.message);
-        cacheDisabled = true;
-        try { redisClient.disconnect(); } catch {}
-      });
+      redisClient = createRedis(ep);
     } catch (e) {
-      console.warn("Failed to init Redis, disabling cache:", e.message);
+      console.warn("Failed to init Redis, disabling cache:", e && e.message ? e.message : e);
       cacheDisabled = true;
       return null;
     }
@@ -38,12 +46,11 @@ function getRedisClient() {
   return redisClient;
 }
 
-// Fetch the plain-text password from environment variable
+// Fetch DB password from env
 async function getDbPassword() {
   return process.env.DB_PASS;
 }
 
-// Construct & connect a new PG client
 async function connectClient() {
   const password = await getDbPassword();
   const client = new Client({
@@ -58,13 +65,20 @@ async function connectClient() {
   return client;
 }
 
+function buildUploadsBase() {
+  const b = process.env.UPLOADS_BASE || "";
+  if (b) return b.replace(/\/+$/, "");
+  if (process.env.UPLOADS_BUCKET) return `https://${process.env.UPLOADS_BUCKET}.s3.amazonaws.com`;
+  return "";
+}
+
 exports.handler = async (event) => {
-  // Handle OPTIONS preflight request
-  if (event.httpMethod === 'OPTIONS') {
+  // OPTIONS preflight
+  if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 204,
       headers: CORS_HEADERS,
-      body: '',
+      body: "",
     };
   }
 
@@ -72,7 +86,7 @@ exports.handler = async (event) => {
 
   let payload;
   try {
-    payload = JSON.parse(event.body);
+    payload = JSON.parse(event.body || "{}");
   } catch (e) {
     console.error("Invalid JSON:", event.body);
     return {
@@ -82,73 +96,66 @@ exports.handler = async (event) => {
     };
   }
 
-  // normalize incoming keys to support image_key or imageKey
   const { title, content, author } = payload;
   const image_key = payload.image_key || payload.imageKey || null;
 
-  // Build fallback image base (option A: explicit UPLOADS_BASE env var,
-  // option B: default to s3 bucket if UPLOADS_BUCKET is set)
-  let uploadsBase = process.env.UPLOADS_BASE || null;
-  if (!uploadsBase && process.env.UPLOADS_BUCKET) {
-    uploadsBase = `https://${process.env.UPLOADS_BUCKET}.s3.amazonaws.com`;
+  // simple validation
+  if (!title || !content || !author) {
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ message: "Missing title, content, or author" }),
+    };
   }
+
+  const uploadsBase = buildUploadsBase();
 
   let client;
   try {
     client = await connectClient();
-    // Insert the basic post. We avoid adding image_url to DB here to keep this change schema-safe.
+
+    // Insert including image_key column (DB must have this column)
     const res = await client.query(
-      "INSERT INTO posts(title, content, author) VALUES($1,$2,$3) RETURNING *",
-      [title, content, author]
+      "INSERT INTO posts(title, content, author, image_key) VALUES($1,$2,$3,$4) RETURNING *",
+      [title, content, author, image_key]
     );
     const created = res.rows[0];
 
-    // If the request included an image_key, compute a best-effort public URL and attach it to response.
-    if (image_key) {
-      created.image_key = image_key;
-      if (uploadsBase) {
-        // ensure no double slashes
-        const base = uploadsBase.replace(/\/+$/,'');
-        created.image_url = `${base}/${image_key}`;
-      } else {
-        // no base known — include the key so frontend can build a URL if it knows the domain
-        created.image_url = null;
-      }
+    // Attach canonical image_url if image_key present
+    if (created && created.image_key) {
+      const key = `${created.image_key}`.replace(/^\/+/, "");
+      created.image_url = uploadsBase ? `${uploadsBase}/${key}` : null;
     }
 
-    // Invalidate the cache so next GET /posts is fresh
+    // Invalidate cache (best-effort)
     const redis = getRedisClient();
-    if (redis) {
+    if (redis && !cacheDisabled) {
       try {
         await redis.del("posts:all");
         console.log("Cache invalidated for posts:all");
       } catch (cacheErr) {
-        console.warn("Failed to invalidate cache:", cacheErr.message);
+        console.warn("Failed to invalidate cache:", cacheErr && cacheErr.message ? cacheErr.message : cacheErr);
         cacheDisabled = true;
       }
     }
 
     return {
       statusCode: 201,
-      headers: {
-        ...CORS_HEADERS,
-        "Content-Type": "application/json"
-      },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       body: JSON.stringify(created),
     };
   } catch (err) {
-    console.error("Error inserting post:", err);
+    console.error("Error inserting post:", err && err.message ? err.message : err);
     return {
       statusCode: 500,
-      headers: {
-        ...CORS_HEADERS,
-        "Content-Type": "application/json"
-      },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       body: JSON.stringify({ message: "Error creating post" }),
     };
   } finally {
     if (client) {
-      try { await client.end(); } catch {}
+      try {
+        await client.end();
+      } catch {}
     }
   }
 };

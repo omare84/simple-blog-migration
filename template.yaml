@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >-
+Description: >
   Serverless stack for Simple Blog
   (Lambda CRUD, API Gateway + CORS, Cognito user pool, S3 + CloudFront)
 
@@ -35,9 +35,10 @@ Globals:
         DB_HOST:        !Ref DatabaseHost
         DB_NAME:        !Ref DatabaseName
         DB_USER:        !Ref DatabaseUser
+        # dynamic secret reference — resolves to the "password" field in the secret JSON
         DB_PASS:        !Sub '{{resolve:secretsmanager:${DatabasePasswordArn}:SecretString:password}}'
         REDIS_ENDPOINT: my-test-redis.7o4zyy.ng.0001.use2.cache.amazonaws.com:6379
-        UPLOADS_BASE:   "https://simple-blog-uploads-omare84.s3.amazonaws.com"
+        UPLOADS_BASE:   "https://scalabledeploy.com"
 
 Resources:
 
@@ -67,6 +68,7 @@ Resources:
         AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE'"
         AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         MaxAge: 86400
+
 
   ### Lambda CRUD ###
   GetPostsFunction:
