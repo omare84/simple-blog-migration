@@ -67,6 +67,27 @@ jobs:
           echo "REACT_APP_API_URL=$REACT_APP_API_URL" >> $GITHUB_ENV
           echo "Exported REACT_APP_API_URL"
 
+      # ← NEW: Read WebsiteURL (frontend) and export REACT_APP_UPLOADS_BASE
+      - name: Get WebsiteURL & export REACT_APP_UPLOADS_BASE
+        shell: bash
+        run: |
+          # prefer stack name from samconfig.toml, otherwise fall back to provided secret or literal
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${{ secrets.SAM_STACK_NAME }}" || echo "sam-app")
+          echo "Using CloudFormation stack: $STACK_NAME (for WEBSITE_URL lookup)"
+
+          WEBSITE_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='WebsiteURL'].OutputValue" \
+            --output text)
+
+          # fallback in case WebsiteURL isn't in outputs
+          if [ -z "$WEBSITE_URL" ] || [ "$WEBSITE_URL" = "None" ]; then
+            WEBSITE_URL="https://scalabledeploy.com"
+          fi
+
+          echo "REACT_APP_UPLOADS_BASE=$WEBSITE_URL" >> $GITHUB_ENV
+          echo "Exported REACT_APP_UPLOADS_BASE=$WEBSITE_URL"
+
       # 2) Build & deploy frontend
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -79,14 +100,18 @@ jobs:
           npm ci
 
       - name: Build frontend
+        # env declaration here is optional because we already exported both vars to $GITHUB_ENV,
+        # but explicitly listing them helps clarity.
         env:
           REACT_APP_API_URL: ${{ env.REACT_APP_API_URL }}
+          REACT_APP_UPLOADS_BASE: ${{ env.REACT_APP_UPLOADS_BASE }}
         run: |
           cd frontend
           npm run build
 
       - name: Sync frontend to S3
         run: |
+          # replace this bucket with your actual frontend bucket if different
           aws s3 sync frontend/build/ s3://sam-app-frontendbucket-fymhb6hc3zdv --delete
 
       - name: Invalidate CloudFront cache
