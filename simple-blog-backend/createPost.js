@@ -68,7 +68,7 @@ async function connectClient() {
 function buildUploadsBase() {
   const b = process.env.UPLOADS_BASE || "";
   if (b) return b.replace(/\/+$/, "");
-  if (process.env.UPLOADS_BUCKET) return `https://${process.env.UPLOADS_BUCKET}.s3.amazonaws.com`;
+  if (process.env.UPLOADS_BUCKET) return `https://${process.env.UPLOADS_BUCKET}.s3.amazonaws.com`.replace(/\/+$/, "");
   return "";
 }
 
@@ -141,7 +141,7 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 201,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" },
       body: JSON.stringify(created),
     };
   } catch (err) {
