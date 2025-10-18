@@ -1,0 +1,9 @@
+# Node modules
+node_modules/
+
+# SAM builds or zips
+.aws-sam/
+lambda.zip
+
+# Lockfile can stay if you want it versioned; otherwise ignore:
+# package-lock.json

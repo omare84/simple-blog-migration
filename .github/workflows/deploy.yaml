@@ -1,0 +1,121 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 1) SAM build & deploy
+      - name: Install SAM CLI
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install aws-sam-cli
+
+      - name: Build SAM
+        working-directory: ./
+        run: sam build
+
+      - name: Deploy SAM
+        working-directory: ./
+        run: |
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+
+      # ← Read CF outputs and set REACT_APP_API_URL for frontend build
+      - name: Get API Endpoint & export REACT_APP_API_URL
+        shell: bash
+        run: |
+          # prefer stack name from samconfig.toml, otherwise fall back to provided secret or literal
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${{ secrets.SAM_STACK_NAME }}" || echo "sam-app")
+          echo "Using CloudFormation stack: $STACK_NAME"
+
+          API_ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+            --output text)
+
+          echo "CloudFormation raw ApiEndpoint: $API_ENDPOINT"
+
+          if [ -z "$API_ENDPOINT" ] || [ "$API_ENDPOINT" = "None" ]; then
+            echo "ERROR: Could not find ApiEndpoint in CloudFormation outputs for stack $STACK_NAME"
+            exit 1
+          fi
+
+          REACT_APP_API_URL="${API_ENDPOINT}/api/posts"
+          # defensive normalization to avoid double slashes like https://...//api/posts
+          REACT_APP_API_URL=${REACT_APP_API_URL//\/\/api/\/api}
+
+          echo "REACT_APP_API_URL=$REACT_APP_API_URL" >> $GITHUB_ENV
+          echo "Exported REACT_APP_API_URL"
+
+      # ← NEW: Read WebsiteURL (frontend) and export REACT_APP_UPLOADS_BASE
+      - name: Get WebsiteURL & export REACT_APP_UPLOADS_BASE
+        shell: bash
+        run: |
+          # prefer stack name from samconfig.toml, otherwise fall back to provided secret or literal
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${{ secrets.SAM_STACK_NAME }}" || echo "sam-app")
+          echo "Using CloudFormation stack: $STACK_NAME (for WEBSITE_URL lookup)"
+
+          WEBSITE_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='WebsiteURL'].OutputValue" \
+            --output text)
+
+          # fallback in case WebsiteURL isn't in outputs
+          if [ -z "$WEBSITE_URL" ] || [ "$WEBSITE_URL" = "None" ]; then
+            WEBSITE_URL="https://scalabledeploy.com"
+          fi
+
+          echo "REACT_APP_UPLOADS_BASE=$WEBSITE_URL" >> $GITHUB_ENV
+          echo "Exported REACT_APP_UPLOADS_BASE=$WEBSITE_URL"
+
+      # 2) Build & deploy frontend
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        # env declaration here is optional because we already exported both vars to $GITHUB_ENV,
+        # but explicitly listing them helps clarity.
+        env:
+          REACT_APP_API_URL: ${{ env.REACT_APP_API_URL }}
+          REACT_APP_UPLOADS_BASE: ${{ env.REACT_APP_UPLOADS_BASE }}
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Sync frontend to S3
+        run: |
+          # replace this bucket with your actual frontend bucket if different
+          aws s3 sync frontend/build/ s3://sam-app-frontendbucket-fymhb6hc3zdv --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CF_DISTRIBUTION_ID }} \
+            --paths "/*"

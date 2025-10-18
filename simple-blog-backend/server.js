@@ -4,24 +4,25 @@ const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
+require('dotenv').config();
 
-// CORS Configuration
+// CORS Configuration - now using environment variable with fallback
 app.use(cors({
-    origin: 'https://d19s599jz0z1u5.cloudfront.net', // Replace with your actual CloudFront domain
+    origin: process.env.ALLOWED_ORIGIN || 'https://d19s599jz0z1u5.cloudfront.net',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],       
-    allowedHeaders: ['Content-Type']                 
+    allowedHeaders: ['Content-Type', 'Authorization'] // Added Authorization as per instructions
 }));
 
 // Middleware to parse JSON request bodies
 app.use(express.json());
 
-// Database Configuration
+// Database Configuration - now using environment variables with fallbacks
 const pool = new Pool({
-  user: 'postgres',
-  host: 'simple-blog.chq0uccsu4k7.us-east-2.rds.amazonaws.com',
-  database: 'simple_blog',
-  password: 'lopez321',
-  port: 5432,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'simple-blog.chq0uccsu4k7.us-east-2.rds.amazonaws.com',
+  database: process.env.DB_NAME || 'simple_blog',
+  password: process.env.DB_PASS || 'local-fallback',   // Fallback for local dev only
+  port: Number(process.env.DB_PORT || 5432),
   ssl: {
     rejectUnauthorized: false,
   },

@@ -1,108 +1,143 @@
-# **Simple Blog Migration**
-A portfolio project showcasing database migration for a simple blog application using **Node.js** and **PostgreSQL**.
+# Simple Blog Migration
+
+**A fully serverless, scalable blog platform with database migration, media upload, search, caching, and notifications.**
 
 ---
 
-## **Overview**
-This project demonstrates:
-- Setting up a backend API with **Node.js** and **Express**.
-- Designing and managing a **PostgreSQL** database schema.
-- Implementing **API endpoints** for basic blog operations (CRUD).
-- Showcasing database migration as a critical skill, including schema setup and data migration.
+## 🚀 Project Phases
+
+| Phase | Description                                                     | Status       |
+|-------|-----------------------------------------------------------------|--------------|
+| 1     | Backend Setup (Node.js, Express, PostgreSQL)                    | ✅ Complete  |
+| 2     | Blog API Development (Full CRUD)                                | ✅ Complete  |
+| 3     | Database Migration (RDS, Secrets Manager)                       | ✅ Complete  |
+| 4     | Frontend Development (React scaffold + UI improvements)         | ✅ Complete  |
+| 5     | Deployment to AWS (EC2, RDS, ALB)                               | ✅ Complete  |
+| 6     | Deploy Frontend (S3 + CloudFront + HTTPS)                       | ✅ Complete  |
+| 7     | Core Features (CRUD on UI)                                      | ✅ Complete  |
+| 8     | AWS‑Native Enhancements (Lambda, API Gateway, CI/CD)           | ✅ Complete  |
+| 9     | UI/UX & Authentication (Cognito + styling)                     | ✅ Complete  |
+| 10    | Advanced Features (Image Upload, Search, Caching, Notifications) | 🚧 In Progress |
 
 ---
 
-## **Features**
-- Connects to a PostgreSQL database.
-- Implements CRUD operations for blog posts.
-- Demonstrates database migration between different platforms (e.g., PostgreSQL to MySQL).
-- Includes a React-based frontend for displaying and managing blog posts.
+## 🌐 Live Demo
+
+- **Frontend App:** https://scalabledeploy.com/  
+- **API (Get Posts):** https://scalabledeploy.com/api/posts
 
 ---
 
-## **Prerequisites**
-Before setting up the project, ensure you have the following:
-- [Node.js](https://nodejs.org/) (v16+)
-- [PostgreSQL](https://www.postgresql.org/) (v14+)
-- [Git](https://git-scm.com/)
+## ⚡ Quick Start
 
----
-
-## **Setup Instructions**
-
-### **1. Clone the Repository**
 ```bash
-git clone <repository-url>
+# 1. Clone and install
+git clone https://github.com/omare84/simple-blog-migration.git
 cd simple-blog-migration
-2. Install Dependencies
-bash
-Copy code
 npm install
-3. Set Up the Database
-Ensure PostgreSQL is installed and running on your system.
-Create a new database called simple_blog:
-sql
-CREATE DATABASE simple_blog;
-4. Configure Environment Variables
-Create a .env file in the project root and add the following:
 
+# 2. Backend (local dev)
+cd simple-blog-backend
+npm install
+# copy .env.example to .env and fill variables
+npm start
 
-DB_USER=your_username
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
+# 3. Frontend (local dev)
+cd ../frontend
+npm install
+npm start
+
+# 4. SAM (for serverless stack)
+# Requires AWS CLI and SAM CLI configured
+sam build && sam local start-api
+```
+
+### Environment Variables (`.env`)
+```
+DB_HOST=...            # RDS endpoint
 DB_NAME=simple_blog
-5. Start the Server
+DB_USER=postgres
+DB_PASS=...            # plain text for local dev
+FRONTEND_DOMAIN=scalabledeploy.com
+COGNITO_USER_POOL_ID=...
+COGNITO_APP_CLIENT_ID=...
+```
 
-node server.js
-The server will start on http://localhost:3000.
+---
 
-API Endpoints
-Posts
-GET /posts: Fetch all blog posts.
-POST /posts: Add a new blog post.
-Request Body:
-json
-{
-  "title": "Post Title",
-  "content": "Post Content",
-  "author": "Author Name"
-}
-GET /posts/:id: Fetch a blog post by ID.
-PUT /posts/:id: Update a blog post by ID.
-Request Body:
-json
-Copy code
-{
-  "title": "Updated Title",
-  "content": "Updated Content",
-  "author": "Updated Author"
-}
-DELETE /posts/:id: Delete a blog post by ID.
-Phase 3: Database Migration
-Overview
-This phase demonstrates the ability to effectively migrate and manage databases, a critical skill in modern application development.
+## 🏗️ Architecture
 
-Key Accomplishments
-Database Setup: Configured PostgreSQL as the primary database.
-Schema Design: Created a posts table with the following structure:
-sql
-CREATE TABLE posts (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    content TEXT NOT NULL,
-    author VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-Migration Process: Implemented a script to automatically set up the posts table. This ensures the database is ready for operations without manual intervention.
-Future Plans
-Explore data migration between PostgreSQL and other databases (e.g., MySQL, DynamoDB).
-Incorporate advanced migration tools like Flyway or Liquibase.
-Phase 4: Frontend Setup
-Overview
-The frontend has been built using React, completing the integration of the project into a full-stack application.
+![Architecture Diagram](docs/architecture.png)
 
-Key Features
-Display Blog Posts: Fetches and displays posts from the backend API.
-Create New Posts: Allows users to create new blog posts via a simple form.
-Responsive Design: Built to be user-friendly across devices.
+**Flow:** CloudFront → S3 (static files) + API Gateway → Lambda → RDS/Redis → Cognito for auth → EventBridge → SES
+
+---
+
+## 💰 Cost Optimization
+
+- **Redis teardown:** Snapshots and delete of ElastiCache when idle to avoid ongoing charges.  
+- **STS Endpoint optimization:** Reduced STS VPC endpoint to a single subnet ENI, cutting charges by 50%.  
+- **SecretsManager endpoint removal:** Deleted the unneeded SecretsManager interface endpoint after switching to `DB_PASS` env var.  
+- **RDS stop/snapshot:** Stop or snapshot and delete non‑prod RDS instances when not in use.  
+- **S3 Lifecycle rules:** Archive or expire objects older than 30 days to minimize storage.
+
+---
+
+## ✨ Key Features
+
+- **CRUD:** Create, Read, Update, Delete blog posts via secure Lambda APIs.  
+- **Authentication:** AWS Cognito sign‑up, sign‑in, protected routes.  
+- **Media Upload:** Presigned S3 URLs for image attachments, served via CloudFront.  
+- **Search/Tagging:** Full‑text search (PostgreSQL TSVector) and tag filtering on posts.  
+- **Caching:** Redis (ElastiCache) for high‑performance read caching with smart fallback—if Redis is unreachable, functions automatically fall back to RDS.  
+- **Notifications:** EventBridge + SES emails on new post creation.  
+- **CI/CD:** GitHub Actions automates `sam build` and `sam deploy`.
+
+---
+
+## 🛠️ Prerequisites
+
+- Node.js v16+  
+- AWS CLI configured  
+- AWS SAM CLI  
+- AWS account with proper IAM permissions
+
+---
+
+## 📋 Detailed Setup
+
+1. **Backend Setup**  
+   - Install dependencies in `simple-blog-backend/`.  
+   - Configure `.env` with your values.  
+   - Ensure RDS tables (`posts`, `subscribers`) exist via migrations.
+2. **Frontend Setup**  
+   - Install dependencies in `frontend/`.  
+   - Configure Amplify/Cognito via `src/aws-exports.js`.
+3. **Infrastructure Provisioning**  
+   - Run `sam build && sam deploy --guided` to deploy:  
+     - Lambda functions, API Gateway REST API  
+     - RDS PostgreSQL, Secrets Manager (for prod)  
+     - ElastiCache Redis cluster, with snapshots automation  
+     - S3 buckets & CloudFront distribution  
+     - Cognito User Pool and App Client  
+     - EventBridge Rule & SES permissions  
+4. **Frontend Deployment**  
+   - `npm run build` → `aws s3 sync build/ s3://<bucket>`  
+   - Invalidate CloudFront: `aws cloudfront create-invalidation …`
+5. **Testing**  
+   - Sign up and sign in via Cognito.  
+   - Create/edit/delete posts, upload images.  
+   - Search posts and observe cache miss/hit.  
+   - Subscribe and receive notification emails (or review logs).
+
+---
+
+## 📖 Documentation & Further Reading
+
+- [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/)  
+- [Tailwind CSS Docs](https://tailwindcss.com/docs)  
+- [PostgreSQL Full‑Text Search](https://www.postgresql.org/docs/current/textsearch.html)
+
+---
+
+*Built with love by Omar E.*

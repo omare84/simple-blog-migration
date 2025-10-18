@@ -1,0 +1,269 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Serverless stack for Simple Blog
+  (Lambda CRUD, API Gateway + CORS, Cognito user pool, S3 + CloudFront)
+
+Parameters:
+  DatabaseHost:
+    Type: String
+    Default: simple-blog.chq0uccsu4k7.us-east-2.rds.amazonaws.com
+  DatabaseName:
+    Type: String
+    Default: simple_blog
+  DatabaseUser:
+    Type: String
+    Default: postgres
+  DatabasePasswordArn:
+    Type: String
+    Default: arn:aws:secretsmanager:us-east-2:954976315156:secret:simple-blog-db-creds-6hqCsg
+  DomainName:
+    Type: String
+    Default: scalabledeploy.com
+  CertificateArn:
+    Type: String
+    Description: ACM cert **must** live in us-east-1 for CloudFront
+    Default: arn:aws:acm:us-east-1:954976315156:certificate/6f23d83a-9dba-4c31-a101-f132a82d99a8
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 128
+    Environment:
+      Variables:
+        DB_HOST:        !Ref DatabaseHost
+        DB_NAME:        !Ref DatabaseName
+        DB_USER:        !Ref DatabaseUser
+        # dynamic secret reference — resolves to the "password" field in the secret JSON
+        DB_PASS:        !Sub '{{resolve:secretsmanager:${DatabasePasswordArn}:SecretString:password}}'
+        REDIS_ENDPOINT: my-test-redis.7o4zyy.ng.0001.use2.cache.amazonaws.com:6379
+        UPLOADS_BASE:   "https://scalabledeploy.com"
+
+Resources:
+
+  ### Cognito User Pool ###
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: simple-blog-pool
+      AutoVerifiedAttributes:
+        - email
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: simple-blog-client
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+
+  ### API Gateway + CORS ###
+  BlogApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SimpleBlogApi
+      StageName: prod
+      Cors:
+        AllowOrigin:  "'*'"
+        AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        MaxAge: 86400
+
+
+  ### Lambda CRUD ###
+  GetPostsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: getPosts.handler
+      Events:
+        GetPosts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/posts
+            Method: GET
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
+
+  CreatePostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: createPost.handler
+      Events:
+        CreatePost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/posts
+            Method: POST
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
+
+  UpdatePostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: updatePost.handler
+      Events:
+        UpdatePost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/posts/{id}
+            Method: PUT
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
+
+  DeletePostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: deletePost.handler
+      Events:
+        DeletePost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/posts/{id}
+            Method: DELETE
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
+
+  ### S3 Bucket for Frontend ###
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls:       true
+        IgnorePublicAcls:      true
+        BlockPublicPolicy:     true
+        RestrictPublicBuckets: true
+
+  ### Origin Access Control ###
+  FrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-OAC"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  ### CloudFront Distribution ###
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Aliases:
+          - !Ref DomainName
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendBucket.DomainName
+            OriginAccessControlId: !Ref FrontendOAC
+            S3OriginConfig: {}
+          - Id: ApiOrigin
+            DomainName: !Sub "${BlogApi}.execute-api.${AWS::Region}.amazonaws.com"
+            OriginPath: "/prod"
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              HTTPPort: 80
+              HTTPSPort: 443
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - HEAD
+            - GET
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: https-only
+            AllowedMethods:
+              - HEAD
+              - GET
+              - OPTIONS
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+        HttpVersion: http2
+
+  ### Uploads Bucket for Media ###
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: simple-blog-uploads-omare84
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Sub "https://${DomainName}"
+            AllowedMethods:
+              - GET
+              - PUT
+            AllowedHeaders: ["*"]
+
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: getUploadUrl.handler
+      Runtime: nodejs16.x
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          UPLOADS_BUCKET: !Ref UploadsBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref UploadsBucket
+      Events:
+        GetUploadUrlApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/posts/{id}/upload-url
+            Method: GET
+
+Outputs:
+  WebsiteURL:
+    Description: CloudFront URL
+    Value: !Sub "https://${DomainName}"
+  ApiEndpoint:
+    Description: API invoke URL
+    Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
