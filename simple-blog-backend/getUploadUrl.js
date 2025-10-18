@@ -28,6 +28,8 @@ exports.handler = async (event) => {
     Key: key,
     Expires: 60,
     ContentType: event.queryStringParameters?.contentType || 'image/jpeg',
+    // Add CacheControl for CloudFront and browser caching
+    CacheControl: 'public, max-age=31536000, immutable'
   };
 
   try {
