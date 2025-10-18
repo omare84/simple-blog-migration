@@ -40,6 +40,7 @@ export function AppContent({ signOut, user }) {
   const [imageKey, setImageKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const getAuthToken = async () => {
     try {
@@ -162,25 +163,54 @@ export function AppContent({ signOut, user }) {
               const file = e.target.files[0];
               if (!file) return;
 
-              const { uploadUrl, key } = await authAxios
-                .get(`${API_BASE}/posts/${(user && user.username) || 'unknown'}/upload-url`, {
-                  params: {
-                    ext: file.name.split('.').pop(),
-                    contentType: file.type,
+              setError('');
+              setUploading(true);
+
+              try {
+                const res = await authAxios.get(
+                  `${API_BASE}/posts/${(user && user.username) || 'unknown'}/upload-url`,
+                  {
+                    params: {
+                      ext: file.name.split('.').pop(),
+                      contentType: file.type,
+                    },
+                  }
+                );
+
+                const { uploadUrl, key } = res.data;
+
+                // Important: include Cache-Control header in the PUT exactly as the presign expects
+                const cacheControlValue = 'public, max-age=31536000, immutable';
+
+                const putRes = await fetch(uploadUrl, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': file.type,
+                    'Cache-Control': cacheControlValue,
                   },
-                })
-                .then((r) => r.data);
+                  body: file,
+                });
 
-              await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': file.type },
-                body: file,
-              });
+                if (!putRes.ok) {
+                  // Read body as text (S3 returns XML on error) to make debugging easier
+                  const bodyText = await putRes.text();
+                  console.error('S3 PUT failed:', putRes.status, bodyText);
+                  throw new Error(`Upload failed: ${putRes.status}`);
+                }
 
-              setImageKey(key);
+                // upload succeeded — set key so user can attach it to post
+                setImageKey(key);
+              } catch (uErr) {
+                console.error('[DEBUG] upload error', uErr);
+                setError('Image upload failed. See console for details.');
+              } finally {
+                setUploading(false);
+              }
             }}
             className="mt-1 block w-full text-sm text-gray-700"
+            disabled={uploading}
           />
+          {uploading && <p className="text-xs text-gray-600 mt-1">Uploading image…</p>}
           {imageKey && <p className="text-xs text-green-600 mt-1">Image ready to attach</p>}
         </label>
 
