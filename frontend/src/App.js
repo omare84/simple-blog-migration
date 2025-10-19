@@ -1,4 +1,3 @@
-// frontend/src/App.js
 import React, { useEffect, useState, useMemo } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Authenticator } from '@aws-amplify/ui-react';
@@ -40,6 +39,7 @@ export function AppContent({ signOut, user }) {
   const [imageKey, setImageKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const getAuthToken = async () => {
     try {
@@ -162,24 +162,76 @@ export function AppContent({ signOut, user }) {
               const file = e.target.files[0];
               if (!file) return;
 
-              const { uploadUrl, key } = await authAxios
-                .get(`${API_BASE}/posts/${(user && user.username) || 'unknown'}/upload-url`, {
-                  params: {
-                    ext: file.name.split('.').pop(),
-                    contentType: file.type,
-                  },
-                })
-                .then((r) => r.data);
+              setError('');
+              setUploading(true);
 
-              await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': file.type },
-                body: file,
-              });
+              // helper: attempt PUT, if it fails due to expiry, fetch new presign and retry once
+              async function attemptPutWithRetry(initialUploadUrl, key) {
+                const putOnce = async (url) => {
+                  const res = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': file.type,
+                      'Cache-Control': 'public, max-age=31536000, immutable',
+                    },
+                    body: file,
+                  });
+                  if (res.ok) return { ok: true };
+                  const text = await res.text().catch(() => '');
+                  return { ok: false, status: res.status, bodyText: text };
+                };
 
-              setImageKey(key);
+                // first attempt
+                const first = await putOnce(initialUploadUrl);
+                if (first.ok) return { success: true };
+
+                // inspect bodyText for expiry signal (Request has expired) or signature expiry
+                const bodyLower = (first.bodyText || '').toLowerCase();
+                const isExpired = bodyLower.includes('request has expired') || bodyLower.includes('signaturedoesnotmatch') || first.status === 403;
+                if (!isExpired) {
+                  // non-expiry error — return failure
+                  return { success: false, error: first.bodyText || `status:${first.status}` };
+                }
+
+                // retry path: fetch a fresh uploadUrl then re-try once
+                try {
+                  const freshRes = await authAxios.get(
+                    `${API_BASE}/posts/${(user && user.username) || 'unknown'}/upload-url`,
+                    { params: { ext: file.name.split('.').pop(), contentType: file.type } }
+                  );
+                  const freshUrl = freshRes.data.uploadUrl;
+                  const retry = await putOnce(freshUrl);
+                  if (retry.ok) return { success: true };
+                  return { success: false, error: retry.bodyText || `status:${retry.status}` };
+                } catch (retryErr) {
+                  return { success: false, error: retryErr && (retryErr.message || JSON.stringify(retryErr)) };
+                }
+              }
+
+              try {
+                const res = await authAxios.get(
+                  `${API_BASE}/posts/${(user && user.username) || 'unknown'}/upload-url`,
+                  { params: { ext: file.name.split('.').pop(), contentType: file.type } }
+                );
+
+                const { uploadUrl, key } = res.data;
+
+                const result = await attemptPutWithRetry(uploadUrl, key);
+                if (!result.success) {
+                  console.error('[DEBUG] upload error (after retry):', result.error);
+                  setError('Image upload failed. See console for details.');
+                } else {
+                  setImageKey(key);
+                }
+              } catch (uErr) {
+                console.error('[DEBUG] upload error (outer):', uErr);
+                setError('Image upload failed. See console for details.');
+              } finally {
+                setUploading(false);
+              }
             }}
             className="mt-1 block w-full text-sm text-gray-700"
+            disabled={uploading}
           />
           {imageKey && <p className="text-xs text-green-600 mt-1">Image ready to attach</p>}
         </label>

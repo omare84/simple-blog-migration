@@ -26,21 +26,24 @@ exports.handler = async (event) => {
   const params = {
     Bucket: process.env.UPLOADS_BUCKET,
     Key: key,
-    Expires: 60,
+    // Increase presign lifetime to 300s (5 minutes) to avoid short-window expiry
+    Expires: 300,
     ContentType: event.queryStringParameters?.contentType || 'image/jpeg',
-    // Add CacheControl for CloudFront and browser caching
+    // Important: long TTL for immutable keys
     CacheControl: 'public, max-age=31536000, immutable'
   };
 
   try {
     const uploadUrl = await S3.getSignedUrlPromise('putObject', params);
+    const generatedAt = new Date().toISOString();
+
     return {
       statusCode: 200,
       headers: {
         ...CORS_HEADERS,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ uploadUrl, key }),
+      body: JSON.stringify({ uploadUrl, key, contentType: event.queryStringParameters?.contentType || 'image/jpeg', generated_at: generatedAt }),
     };
   } catch (err) {
     console.error(err);
