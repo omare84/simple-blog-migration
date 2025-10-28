@@ -1,0 +1,17 @@
+[
+  {
+    "id": "doc-1",
+    "title": "Product Page — Widget 3000",
+    "text": "Widget 3000 is our flagship product. It ships with a 2-year warranty. Key specs: 12-inch display, 4-core CPU, 128GB storage. Use the SKU W3000 when ordering."
+  },
+  {
+    "id": "doc-2",
+    "title": "Support KB — Refunds",
+    "text": "Refunds are processed within 5 business days. Customers must provide an order number and a reason. If the product is damaged, include photos. For subscription refunds, prorated amounts apply."
+  },
+  {
+    "id": "doc-3",
+    "title": "Integration Guide — API Keys",
+    "text": "To call our API, include an Authorization header with your API key. Rate limit is 60 requests per minute. Use the /v1/endpoint path and always include json content-type."
+  }
+]

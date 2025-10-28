@@ -13,6 +13,7 @@ import BlogPage from './pages/BlogPage';
 import CaseStudiesIndex from './pages/CaseStudiesIndex';
 import LandingPage from './pages/LandingPage';
 import CaseStudyCaching from './pages/case-studies/CaseStudyCaching';
+import RagDemo from './pages/demo/RagDemo';
 
 // components
 import NavBar from './components/NavBar';
@@ -320,6 +321,7 @@ export default function App() {
           <Route path="/case-studies" element={<CaseStudiesIndex />} />
           <Route path="/case-studies/caching" element={<CaseStudyCaching />} />
           <Route path="/blog/image-upload" element={<ComingSoon title="Image Upload Walkthrough" />} />
+          <Route path="/demo/rag" element={<RagDemo />} />
 
           <Route path="*" element={<LandingPage />} />
         </Routes>

@@ -1,4 +1,3 @@
-// frontend/src/config.js
 // Make API_BASE a clean base URL (no trailing slash, no trailing "/posts").
 const raw = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'development' ? '/api' : '');
 
