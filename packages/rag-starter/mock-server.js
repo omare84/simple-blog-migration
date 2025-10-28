@@ -1,13 +1,12 @@
-// mock-server.js — tiny Express mock that simulates a RAG query endpoint
+// packages/rag-starter/mock-server.js
+// Tiny Express mock that simulates a RAG query endpoint with explicit CORS handling.
 const express = require('express');
 const bodyParser = require('body-parser');
-const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const shortid = require('shortid');
 
 const app = express();
-app.use(cors());
 app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 5001;
@@ -29,7 +28,7 @@ function saveDocs(docs) {
 // very small scoring: count matched query words
 function scoreDoc(query, doc) {
   const qWords = query.toLowerCase().split(/\W+/).filter(Boolean);
-  const text = (doc.title + ' ' + doc.text).toLowerCase();
+  const text = ((doc.title || '') + ' ' + (doc.text || '')).toLowerCase();
   let score = 0;
   for (const w of qWords) {
     if (text.includes(w)) score += 1;
@@ -38,13 +37,27 @@ function scoreDoc(query, doc) {
 }
 
 function excerptFor(doc, query) {
-  const q = query.split(/\W+/).filter(Boolean)[0] || null;
-  if (!q) return doc.text.slice(0, 200);
-  const idx = doc.text.toLowerCase().indexOf(q.toLowerCase());
-  if (idx === -1) return doc.text.slice(0, 200);
+  const q = (query || '').split(/\W+/).filter(Boolean)[0] || null;
+  const fullText = doc.text || '';
+  if (!q) return fullText.slice(0, 200);
+  const idx = fullText.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return fullText.slice(0, 200);
   const start = Math.max(0, idx - 60);
-  return doc.text.slice(start, Math.min(doc.text.length, start + 200)).replace(/\n/g, ' ');
+  return fullText.slice(start, Math.min(fullText.length, start + 200)).replace(/\n/g, ' ');
 }
+
+// ---- CORS middleware (explicit) ----
+// In local dev this allows any origin. For production restrict to your domain.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*'); // change to 'https://scalabledeploy.com' in prod
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Cache-Control');
+  // If you want cookies/auth in dev, add: res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // GET docs (for quick debugging)
 app.get('/api/rag/docs', (req, res) => {
