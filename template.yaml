@@ -69,7 +69,6 @@ Resources:
         AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         MaxAge: 86400
 
-
   ### Lambda CRUD ###
   GetPostsFunction:
     Type: AWS::Serverless::Function
@@ -150,6 +149,23 @@ Resources:
           - subnet-0030c66d15ad873f2
         SecurityGroupIds:
           - sg-0266a54c493ab3533
+
+  ### RAG demo Lambda (new) ###
+  RagQueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: rag-query.handler           # file: simple-blog-backend/rag-query.js, exports.handler
+      MemorySize: 128
+      Timeout: 30
+      # No VPC config — keep it public, simple, and low-ops (as requested)
+      Events:
+        RagProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/rag/{proxy+}
+            Method: ANY
 
   ### S3 Bucket for Frontend ###
   FrontendBucket:
@@ -267,3 +283,6 @@ Outputs:
   ApiEndpoint:
     Description: API invoke URL
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  RagProxyPath:
+    Description: RAG Proxy base path
+    Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/"
