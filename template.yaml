@@ -24,6 +24,15 @@ Parameters:
     Type: String
     Description: ACM cert **must** live in us-east-1 for CloudFront
     Default: arn:aws:acm:us-east-1:954976315156:certificate/6f23d83a-9dba-4c31-a101-f132a82d99a8
+  OpenAIKey:
+    Type: String
+    NoEcho: true
+    Description: "OpenAI API Key"
+    Default: ""
+  EmbeddingDim:
+    Type: Number
+    Default: 1536
+    Description: "Dimension of embedding model"
 
 Globals:
   Function:
@@ -150,22 +159,67 @@ Resources:
         SecurityGroupIds:
           - sg-0266a54c493ab3533
 
-  ### RAG demo Lambda (new) ###
+  ### RAG Functions ###
   RagQueryFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: simple-blog-backend/
-      Handler: rag-query.handler           # file: simple-blog-backend/rag-query.js, exports.handler
-      MemorySize: 128
-      Timeout: 30
-      # No VPC config — keep it public, simple, and low-ops (as requested)
+      Handler: rag-query.handler
+      Runtime: nodejs20.x
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          OPENAI_KEY: !Ref OpenAIKey
+          EMBEDDING_DIM: !Ref EmbeddingDim
+          REDIS_INDEX: idx:rag
+          REDIS_PREFIX: rag:meta:
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
       Events:
-        RagProxy:
+        RagQueryApi:
           Type: Api
           Properties:
             RestApiId: !Ref BlogApi
-            Path: /api/rag/{proxy+}
-            Method: ANY
+            Path: /api/rag/query
+            Method: POST
+
+  RagIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: simple-blog-backend/
+      Handler: rag-ingest.handler
+      Runtime: nodejs20.x
+      MemorySize: 512
+      Timeout: 120
+      Environment:
+        Variables:
+          OPENAI_KEY: !Ref OpenAIKey
+          EMBEDDING_DIM: !Ref EmbeddingDim
+          REDIS_INDEX: idx:rag
+          REDIS_PREFIX: rag:meta:
+      VpcConfig:
+        SubnetIds:
+          - subnet-0f81cbed1310084af
+          - subnet-00213d39d68d022cd
+          - subnet-0030c66d15ad873f2
+        SecurityGroupIds:
+          - sg-0266a54c493ab3533
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref UploadsBucket
+      Events:
+        RagIngestApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BlogApi
+            Path: /api/rag/ingest
+            Method: POST
 
   ### S3 Bucket for Frontend ###
   FrontendBucket:
@@ -283,6 +337,9 @@ Outputs:
   ApiEndpoint:
     Description: API invoke URL
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-  RagProxyPath:
-    Description: RAG Proxy base path
-    Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/"
+  RagQueryEndpoint:
+    Description: RAG Query endpoint
+    Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/query"
+  RagIngestEndpoint:
+    Description: RAG Ingest endpoint  
+    Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/ingest"
