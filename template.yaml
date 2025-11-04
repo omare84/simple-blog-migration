@@ -173,7 +173,7 @@ Resources:
           OPENAI_KEY: !Ref OpenAIKey
           EMBEDDING_DIM: !Ref EmbeddingDim
           REDIS_INDEX: idx:rag
-          REDIS_PREFIX: rag:meta:
+          REDIS_PREFIX: "rag:meta:"
       VpcConfig:
         SubnetIds:
           - subnet-0f81cbed1310084af
@@ -202,7 +202,7 @@ Resources:
           OPENAI_KEY: !Ref OpenAIKey
           EMBEDDING_DIM: !Ref EmbeddingDim
           REDIS_INDEX: idx:rag
-          REDIS_PREFIX: rag:meta:
+          REDIS_PREFIX: "rag:meta:"
       VpcConfig:
         SubnetIds:
           - subnet-0f81cbed1310084af
