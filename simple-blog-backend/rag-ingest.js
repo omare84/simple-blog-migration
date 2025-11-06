@@ -6,8 +6,13 @@
 
 const { parse } = require('csv-parse/sync');
 const Redis = require('ioredis');
-const { nanoid } = require('nanoid');
-const fetch = require('node-fetch');
+const crypto = require('crypto'); // use built-in UUIDs instead of nanoid
+
+// Prefer the global fetch available in Node 18+/20+. If not available, fail loudly.
+const fetch = globalThis.fetch;
+if (!fetch) {
+  throw new Error('Global fetch is not available in this runtime. Use Node 18+/20+ or bundle a fetch polyfill.');
+}
 
 const REDIS = process.env.REDIS_ENDPOINT;
 const OPENAI_KEY = process.env.OPENAI_KEY;
@@ -16,6 +21,12 @@ const REDIS_INDEX = process.env.REDIS_INDEX || 'idx:rag';
 const REDIS_PREFIX = process.env.REDIS_PREFIX || 'rag:meta:';
 
 const redis = new Redis(REDIS);
+
+// small id helper (UUID v4)
+function makeId() {
+  // returns UUID like '3f50c6d8-....' — if you want short ids, return crypto.randomUUID().split('-')[0]
+  return crypto.randomUUID();
+}
 
 async function embedTexts(texts = []) {
   if (!OPENAI_KEY) throw new Error('OPENAI_KEY not set in env');
@@ -89,7 +100,7 @@ exports.handler = async (event) => {
     // store each as a Redis HASH with vector blob
     let count = 0;
     for (let i = 0; i < rows.length; i++) {
-      const id = rows[i].id || nanoid();
+      const id = rows[i].id || makeId();
       const key = makeKey(id);
       const meta = {
         id,
@@ -102,8 +113,9 @@ exports.handler = async (event) => {
       const vec = embeddings[i];
       if (!vec || vec.length !== EMBEDDING_DIM) {
         console.warn('embedding length mismatch', id, (vec || []).length);
+        // continue or still store? We'll still attempt to store a buffer (may be empty)
       }
-      const vecBuf = float32BufferFromArray(vec);
+      const vecBuf = float32BufferFromArray(vec || new Array(EMBEDDING_DIM).fill(0));
 
       // HSET fields (store vector as raw blob)
       // Note: RediSearch expects the vector field to be raw bytes in Float32 LE when index was created.
@@ -113,8 +125,13 @@ exports.handler = async (event) => {
         'snippet', meta.snippet,
         'vector', vecBuf
       ];
-      // ioredis will convert Buffer as a binary field correctly
-      await redis.hsetBuffer ? redis.hsetBuffer(key, ...hm) : redis.call('HSET', key, ...hm);
+      // ioredis may not have hsetBuffer; fallback to call if available
+      if (typeof redis.hsetBuffer === 'function') {
+        await redis.hsetBuffer(key, ...hm);
+      } else {
+        // ioredis v5+ will accept Buffers in hm; use HSET with raw args
+        await redis.call('HSET', key, ...hm);
+      }
 
       count++;
     }
