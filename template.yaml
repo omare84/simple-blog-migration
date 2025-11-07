@@ -27,8 +27,12 @@ Parameters:
   OpenAIKey:
     Type: String
     NoEcho: true
-    Description: "OpenAI API Key"
+    Description: "OpenAI API Key (legacy - kept for compatibility)"
     Default: ""
+  OpenAISecretArn:
+    Type: String
+    Description: ARN of Secrets Manager secret that contains OPENAI_KEY
+    Default: arn:aws:secretsmanager:us-east-2:954976315156:secret:scalabledeploy/openai-0T71eu
   EmbeddingDim:
     Type: Number
     Default: 1536
@@ -170,7 +174,8 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
-          OPENAI_KEY: !Ref OpenAIKey
+          # Resolve OPENAI_KEY from Secrets Manager at deploy/runtime
+          OPENAI_KEY: !Sub '{{resolve:secretsmanager:${OpenAISecretArn}:SecretString:OPENAI_KEY}}'
           EMBEDDING_DIM: !Ref EmbeddingDim
           REDIS_INDEX: idx:rag
           REDIS_PREFIX: "rag:meta:"
@@ -181,6 +186,13 @@ Resources:
           - subnet-0030c66d15ad873f2
         SecurityGroupIds:
           - sg-0266a54c493ab3533
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref OpenAISecretArn
       Events:
         RagQueryApi:
           Type: Api
@@ -199,7 +211,8 @@ Resources:
       Timeout: 120
       Environment:
         Variables:
-          OPENAI_KEY: !Ref OpenAIKey
+          # Resolve OPENAI_KEY from Secrets Manager at deploy/runtime
+          OPENAI_KEY: !Sub '{{resolve:secretsmanager:${OpenAISecretArn}:SecretString:OPENAI_KEY}}'
           EMBEDDING_DIM: !Ref EmbeddingDim
           REDIS_INDEX: idx:rag
           REDIS_PREFIX: "rag:meta:"
@@ -213,6 +226,12 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref UploadsBucket
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref OpenAISecretArn
       Events:
         RagIngestApi:
           Type: Api
@@ -341,5 +360,5 @@ Outputs:
     Description: RAG Query endpoint
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/query"
   RagIngestEndpoint:
-    Description: RAG Ingest endpoint  
+    Description: RAG Ingest endpoint
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/ingest"

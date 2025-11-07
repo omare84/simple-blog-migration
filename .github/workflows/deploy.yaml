@@ -9,6 +9,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  # fallback AWS region (can be overridden by secrets)
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
@@ -16,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v2
@@ -24,34 +28,49 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 1) SAM build & deploy
+      # 1) SAM build & deploy (compute stack name then deploy with parameter override)
       - name: Install SAM CLI
         run: |
           python3 -m pip install --upgrade pip
           pip install aws-sam-cli
 
       - name: Build SAM
-        working-directory: ./
+        working-directory: ./ 
         run: sam build
 
-      - name: Deploy SAM
-        working-directory: ./
+      - name: Deploy SAM (with OpenAI secret ARN param)
+        shell: bash
+        env:
+          OPENAI_SECRET_ARN: ${{ secrets.OPENAI_SECRET_ARN }}
+          SAM_STACK_NAME_SECRET: ${{ secrets.SAM_STACK_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
+          # Determine stack name: prefer samconfig.toml, then secret, then default "sam-app"
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${SAM_STACK_NAME_SECRET}" || echo "sam-app")
+          echo "Using CloudFormation stack name: $STACK_NAME"
+
+          # Deploy with parameter override to provide the secret ARN
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides OpenAISecretArn=${OPENAI_SECRET_ARN}
 
       # ← Read CF outputs and set REACT_APP_API_URL for frontend build
       - name: Get API Endpoint & export REACT_APP_API_URL
         shell: bash
+        env:
+          SAM_STACK_NAME_SECRET: ${{ secrets.SAM_STACK_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          # prefer stack name from samconfig.toml, otherwise fall back to provided secret or literal
-          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${{ secrets.SAM_STACK_NAME }}" || echo "sam-app")
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${SAM_STACK_NAME_SECRET}" || echo "sam-app")
           echo "Using CloudFormation stack: $STACK_NAME"
 
           API_ENDPOINT=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
-            --output text)
+            --output text \
+            --region "$AWS_REGION")
 
           echo "CloudFormation raw ApiEndpoint: $API_ENDPOINT"
 
@@ -60,25 +79,28 @@ jobs:
             exit 1
           fi
 
+          # Set posts API base (used by frontend)
           REACT_APP_API_URL="${API_ENDPOINT}/api/posts"
-          # defensive normalization to avoid double slashes like https://...//api/posts
           REACT_APP_API_URL=${REACT_APP_API_URL//\/\/api/\/api}
 
           echo "REACT_APP_API_URL=$REACT_APP_API_URL" >> $GITHUB_ENV
           echo "Exported REACT_APP_API_URL"
 
-      # ← NEW: Read WebsiteURL (frontend) and export REACT_APP_UPLOADS_BASE
+      # ← Read WebsiteURL (frontend) and export REACT_APP_UPLOADS_BASE
       - name: Get WebsiteURL & export REACT_APP_UPLOADS_BASE
         shell: bash
+        env:
+          SAM_STACK_NAME_SECRET: ${{ secrets.SAM_STACK_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          # prefer stack name from samconfig.toml, otherwise fall back to provided secret or literal
-          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${{ secrets.SAM_STACK_NAME }}" || echo "sam-app")
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${SAM_STACK_NAME_SECRET}" || echo "sam-app")
           echo "Using CloudFormation stack: $STACK_NAME (for WEBSITE_URL lookup)"
 
           WEBSITE_URL=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='WebsiteURL'].OutputValue" \
-            --output text)
+            --output text \
+            --region "$AWS_REGION")
 
           # fallback in case WebsiteURL isn't in outputs
           if [ -z "$WEBSITE_URL" ] || [ "$WEBSITE_URL" = "None" ]; then
@@ -100,8 +122,6 @@ jobs:
           npm ci
 
       - name: Build frontend
-        # env declaration here is optional because we already exported both vars to $GITHUB_ENV,
-        # but explicitly listing them helps clarity.
         env:
           REACT_APP_API_URL: ${{ env.REACT_APP_API_URL }}
           REACT_APP_UPLOADS_BASE: ${{ env.REACT_APP_UPLOADS_BASE }}
@@ -109,13 +129,53 @@ jobs:
           cd frontend
           npm run build
 
-      - name: Sync frontend to S3
+      - name: Resolve Frontend S3 bucket (from CF outputs or fallback secret)
+        id: resolve_bucket
+        shell: bash
+        env:
+          SAM_STACK_NAME_SECRET: ${{ secrets.SAM_STACK_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          FALLBACK_FRONTEND_BUCKET: ${{ secrets.FRONTEND_BUCKET }}
         run: |
-          # replace this bucket with your actual frontend bucket if different
-          aws s3 sync frontend/build/ s3://sam-app-frontendbucket-fymhb6hc3zdv --delete
+          STACK_NAME=$(grep -Po '(?<=stack_name = ")[^"]+' samconfig.toml 2>/dev/null || echo "${SAM_STACK_NAME_SECRET}" || echo "sam-app")
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue" \
+            --output text \
+            --region "$AWS_REGION" 2>/dev/null || true)
+
+          # If template does not expose FrontendBucketName output, fallback to environment secret
+          if [ -z "$BUCKET" ] || [ "$BUCKET" = "None" ]; then
+            if [ -n "$FALLBACK_FRONTEND_BUCKET" ]; then
+              BUCKET="$FALLBACK_FRONTEND_BUCKET"
+              echo "Using fallback FRONTEND_BUCKET from secrets."
+            else
+              # fallback to a default pattern (replace as needed)
+              BUCKET="sam-app-frontendbucket-fymhb6hc3zdv"
+              echo "No CF output or fallback secret found. Using hard-coded default: $BUCKET"
+            fi
+          fi
+
+          echo "frontend_bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "Resolved frontend bucket: $BUCKET"
+
+      - name: Sync frontend to S3
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          FRONTEND_BUCKET="${{ steps.resolve_bucket.outputs.frontend_bucket }}"
+          echo "Syncing built frontend to s3://$FRONTEND_BUCKET"
+          aws s3 sync frontend/build/ "s3://$FRONTEND_BUCKET" --delete --region "$AWS_REGION"
 
       - name: Invalidate CloudFront cache
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          CF_DISTRIBUTION_ID: ${{ secrets.CF_DISTRIBUTION_ID }}
         run: |
+          if [ -z "$CF_DISTRIBUTION_ID" ]; then
+            echo "CF_DISTRIBUTION_ID not set; skipping invalidation"
+            exit 0
+          fi
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DISTRIBUTION_ID }} \
+            --distribution-id "$CF_DISTRIBUTION_ID" \
             --paths "/*"
