@@ -48,9 +48,9 @@ Globals:
         DB_HOST:        !Ref DatabaseHost
         DB_NAME:        !Ref DatabaseName
         DB_USER:        !Ref DatabaseUser
-        # dynamic secret reference — resolves to the "password" field in the secret JSON
         DB_PASS:        !Sub '{{resolve:secretsmanager:${DatabasePasswordArn}:SecretString:password}}'
-        REDIS_ENDPOINT: my-test-redis.7o4zyy.ng.0001.use2.cache.amazonaws.com:6379
+        # <-- UPDATED REDIS_ENDPOINT to demo Valkey cluster (propagates to all functions unless overridden)
+        REDIS_ENDPOINT: master.my-test-redis-demo-tenant1.7o4zyy.use2.cache.amazonaws.com:6379
         UPLOADS_BASE:   "https://scalabledeploy.com"
 
 Resources:
@@ -79,7 +79,7 @@ Resources:
       Cors:
         AllowOrigin:  "'*'"
         AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE'"
-        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Amz-Security-Token'"
         MaxAge: 86400
 
   ### Lambda CRUD ###
@@ -163,7 +163,7 @@ Resources:
         SecurityGroupIds:
           - sg-0266a54c493ab3533
 
-  ### RAG Functions ###
+  ### RAG Functions (VpcConfig removed for rapid internet egress) ###
   RagQueryFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -174,18 +174,11 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
-          # Resolve OPENAI_KEY from Secrets Manager at deploy/runtime
+          # OPENAI_KEY resolved via Secrets Manager dynamic reference
           OPENAI_KEY: !Sub '{{resolve:secretsmanager:${OpenAISecretArn}:SecretString:OPENAI_KEY}}'
           EMBEDDING_DIM: !Ref EmbeddingDim
           REDIS_INDEX: idx:rag
           REDIS_PREFIX: "rag:meta:"
-      VpcConfig:
-        SubnetIds:
-          - subnet-0f81cbed1310084af
-          - subnet-00213d39d68d022cd
-          - subnet-0030c66d15ad873f2
-        SecurityGroupIds:
-          - sg-0266a54c493ab3533
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -211,18 +204,10 @@ Resources:
       Timeout: 120
       Environment:
         Variables:
-          # Resolve OPENAI_KEY from Secrets Manager at deploy/runtime
           OPENAI_KEY: !Sub '{{resolve:secretsmanager:${OpenAISecretArn}:SecretString:OPENAI_KEY}}'
           EMBEDDING_DIM: !Ref EmbeddingDim
           REDIS_INDEX: idx:rag
           REDIS_PREFIX: "rag:meta:"
-      VpcConfig:
-        SubnetIds:
-          - subnet-0f81cbed1310084af
-          - subnet-00213d39d68d022cd
-          - subnet-0030c66d15ad873f2
-        SecurityGroupIds:
-          - sg-0266a54c493ab3533
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref UploadsBucket
@@ -332,7 +317,7 @@ Resources:
     Properties:
       CodeUri: simple-blog-backend/
       Handler: getUploadUrl.handler
-      Runtime: nodejs16.x
+      Runtime: nodejs20.x
       MemorySize: 128
       Timeout: 10
       Environment:
@@ -353,6 +338,9 @@ Outputs:
   WebsiteURL:
     Description: CloudFront URL
     Value: !Sub "https://${DomainName}"
+  FrontendBucketName:
+    Description: Frontend S3 bucket name (useful for CI)
+    Value: !Ref FrontendBucket
   ApiEndpoint:
     Description: API invoke URL
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
