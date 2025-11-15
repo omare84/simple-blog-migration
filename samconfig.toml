@@ -1,4 +1,5 @@
 version = 0.1
+
 [default.deploy.parameters]
 stack_name = "sam-app"
 resolve_s3 = true
@@ -6,5 +7,5 @@ s3_prefix = "sam-app"
 region = "us-east-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "DatabaseHost=\"simple-blog.chq0uccsu4k7.us-east-2.rds.amazonaws.com\" DatabaseName=\"simple_blog\" DatabaseUser=\"postgres\" DatabasePasswordArn=\"arn:aws:secretsmanager:us-east-2:954976315156:secret:simple-blog-db-creds-6hqCsg\" DomainName=\"scalabledeploy.com\" CertificateArn=\"arn:aws:acm:us-east-1:954976315156:certificate/6f23d83a-9dba-4c31-a101-f132a82d99a8\""
+parameter_overrides = "DatabaseHost=\"simple-blog.chq0uccsu4k7.us-east-2.rds.amazonaws.com\" DatabaseName=\"simple_blog\" DatabaseUser=\"postgres\" DatabasePasswordArn=\"arn:aws:secretsmanager:us-east-2:954976315156:secret:simple-blog-db-creds-6hqCsg\" DomainName=\"scalabledeploy.com\" CertificateArn=\"arn:aws:acm:us-east-1:954976315156:certificate/6f23d83a-9dba-4c31-a101-f132a82d99a8\" OpenAISecretArn=\"arn:aws:secretsmanager:us-east-2:954976315156:secret:scalabledeploy/openai-0T71eu\" PineconeSecretArn=\"arn:aws:secretsmanager:us-east-2:954976315156:secret:scalabledeploy/pinecone-ANs2aQ\" PineconeBaseUrl=\"https://scalable-deploy-rag-90i1xum.svc.aped-4627-b74a.pinecone.io\" PineconeIndex=\"scalable-deploy-rag\""
 image_repositories = []

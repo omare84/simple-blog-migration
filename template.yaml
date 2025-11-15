@@ -24,19 +24,31 @@ Parameters:
     Type: String
     Description: ACM cert **must** live in us-east-1 for CloudFront
     Default: arn:aws:acm:us-east-1:954976315156:certificate/6f23d83a-9dba-4c31-a101-f132a82d99a8
-  OpenAIKey:
-    Type: String
-    NoEcho: true
-    Description: "OpenAI API Key (legacy - kept for compatibility)"
-    Default: ""
-  OpenAISecretArn:
-    Type: String
-    Description: ARN of Secrets Manager secret that contains OPENAI_KEY
-    Default: arn:aws:secretsmanager:us-east-2:954976315156:secret:scalabledeploy/openai-0T71eu
   EmbeddingDim:
     Type: Number
     Default: 1536
     Description: "Dimension of embedding model"
+
+  # Secrets / Provider parameters
+  OpenAISecretArn:
+    Type: String
+    Description: ARN of Secrets Manager secret that contains OPENAI_KEY
+    Default: ""   # set via sam deploy or guided deploy (or add your arn here)
+
+  PineconeSecretArn:
+    Type: String
+    Description: ARN of Secrets Manager secret that contains PINECONE_API_KEY
+    Default: ""   # set via sam deploy or guided deploy (or add your arn here)
+
+  PineconeBaseUrl:
+    Type: String
+    Description: "Pinecone base URL (example: https://scalable-deploy-rag-xxxxx.svc.us-east1.pinecone.io)"
+    Default: "https://scalable-deploy-rag-90i1xum.svc.aped-4627-b74a.pinecone.io"
+
+  PineconeIndex:
+    Type: String
+    Description: Pinecone index name
+    Default: scalable-deploy-rag
 
 Globals:
   Function:
@@ -48,9 +60,9 @@ Globals:
         DB_HOST:        !Ref DatabaseHost
         DB_NAME:        !Ref DatabaseName
         DB_USER:        !Ref DatabaseUser
+        # dynamic secret reference — resolves to the "password" field in the secret JSON
         DB_PASS:        !Sub '{{resolve:secretsmanager:${DatabasePasswordArn}:SecretString:password}}'
-        # <-- UPDATED REDIS_ENDPOINT to demo Valkey cluster (propagates to all functions unless overridden)
-        REDIS_ENDPOINT: master.my-test-redis-demo-tenant1.7o4zyy.use2.cache.amazonaws.com:6379
+        REDIS_ENDPOINT: my-test-redis.7o4zyy.ng.0001.use2.cache.amazonaws.com:6379
         UPLOADS_BASE:   "https://scalabledeploy.com"
 
 Resources:
@@ -79,7 +91,7 @@ Resources:
       Cors:
         AllowOrigin:  "'*'"
         AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE'"
-        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Amz-Security-Token'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         MaxAge: 86400
 
   ### Lambda CRUD ###
@@ -163,7 +175,7 @@ Resources:
         SecurityGroupIds:
           - sg-0266a54c493ab3533
 
-  ### RAG Functions (VpcConfig removed for rapid internet egress) ###
+  ### RAG Functions (no VPC config to avoid NAT cost for demo) ###
   RagQueryFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -174,18 +186,16 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
-          # OPENAI_KEY resolved via Secrets Manager dynamic reference
+          # OPENAI_KEY resolved from Secrets Manager at deploy time
           OPENAI_KEY: !Sub '{{resolve:secretsmanager:${OpenAISecretArn}:SecretString:OPENAI_KEY}}'
           EMBEDDING_DIM: !Ref EmbeddingDim
+          # Pinecone config resolved from Secrets Manager at deploy time
+          PINECONE_BASE_URL: !Ref PineconeBaseUrl
+          PINECONE_INDEX: !Ref PineconeIndex
+          PINECONE_API_KEY: !Sub '{{resolve:secretsmanager:${PineconeSecretArn}:SecretString:PINECONE_API_KEY}}'
+          # keep Redis vars as fallback (not used when using Pinecone)
           REDIS_INDEX: idx:rag
           REDIS_PREFIX: "rag:meta:"
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource: !Ref OpenAISecretArn
       Events:
         RagQueryApi:
           Type: Api
@@ -204,19 +214,19 @@ Resources:
       Timeout: 120
       Environment:
         Variables:
+          # OPENAI_KEY resolved from Secrets Manager at deploy time
           OPENAI_KEY: !Sub '{{resolve:secretsmanager:${OpenAISecretArn}:SecretString:OPENAI_KEY}}'
           EMBEDDING_DIM: !Ref EmbeddingDim
+          # Pinecone config resolved from Secrets Manager at deploy time
+          PINECONE_BASE_URL: !Ref PineconeBaseUrl
+          PINECONE_INDEX: !Ref PineconeIndex
+          PINECONE_API_KEY: !Sub '{{resolve:secretsmanager:${PineconeSecretArn}:SecretString:PINECONE_API_KEY}}'
+          # keep Redis vars as fallback (not used when using Pinecone)
           REDIS_INDEX: idx:rag
           REDIS_PREFIX: "rag:meta:"
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref UploadsBucket
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource: !Ref OpenAISecretArn
       Events:
         RagIngestApi:
           Type: Api
@@ -317,7 +327,7 @@ Resources:
     Properties:
       CodeUri: simple-blog-backend/
       Handler: getUploadUrl.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs16.x
       MemorySize: 128
       Timeout: 10
       Environment:
@@ -338,9 +348,6 @@ Outputs:
   WebsiteURL:
     Description: CloudFront URL
     Value: !Sub "https://${DomainName}"
-  FrontendBucketName:
-    Description: Frontend S3 bucket name (useful for CI)
-    Value: !Ref FrontendBucket
   ApiEndpoint:
     Description: API invoke URL
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
@@ -348,5 +355,5 @@ Outputs:
     Description: RAG Query endpoint
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/query"
   RagIngestEndpoint:
-    Description: RAG Ingest endpoint
+    Description: RAG Ingest endpoint  
     Value: !Sub "https://${BlogApi}.execute-api.${AWS::Region}.amazonaws.com/prod/api/rag/ingest"

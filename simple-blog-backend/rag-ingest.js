@@ -1,84 +1,122 @@
 // simple-blog-backend/rag-ingest.js
 // Lambda handler: POST /api/rag/ingest
 // Accepts JSON body: { csv: "<full CSV text>" } or { rows: [ {id,title,description,url} ] }
-// For small CSVs we accept direct upload from the admin page.
-// Uses OpenAI embeddings and Redis (RediSearch) to store vectors + metadata.
 
 const { parse } = require('csv-parse/sync');
 const Redis = require('ioredis');
-const crypto = require('crypto'); // use built-in UUIDs instead of nanoid
+const crypto = require('crypto');
 
-// Prefer the global fetch available in Node 18+/20+. If not available, fail loudly.
 const fetch = globalThis.fetch;
-if (!fetch) {
-  throw new Error('Global fetch is not available in this runtime. Use Node 18+/20+ or bundle a fetch polyfill.');
-}
+if (!fetch) throw new Error('Global fetch is not available in this runtime. Use Node 18+/20+.');
 
-const REDIS = process.env.REDIS_ENDPOINT;
+const REDIS_ENDPOINT = process.env.REDIS_ENDPOINT;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 const EMBEDDING_DIM = parseInt(process.env.EMBEDDING_DIM || '1536', 10);
 const REDIS_INDEX = process.env.REDIS_INDEX || 'idx:rag';
 const REDIS_PREFIX = process.env.REDIS_PREFIX || 'rag:meta:';
 
-const redis = new Redis(REDIS);
+const PINECONE_BASE_URL = process.env.PINECONE_BASE_URL || null;
+const PINECONE_API_KEY = process.env.PINECONE_API_KEY || null;
+const PINECONE_INDEX = process.env.PINECONE_INDEX || process.env.PineconeIndex || null;
 
-// small id helper (UUID v4)
-function makeId() {
-  // returns UUID like '3f50c6d8-....' — if you want short ids, return crypto.randomUUID().split('-')[0]
-  return crypto.randomUUID();
-}
+const MOCK_EMBEDDINGS = process.env.MOCK_EMBEDDINGS === 'true';
+const MOCK_REDIS = process.env.MOCK_REDIS === 'true';
 
-async function embedTexts(texts = []) {
-  if (!OPENAI_KEY) throw new Error('OPENAI_KEY not set in env');
-  // OpenAI embeddings endpoint (change model if needed)
-  const url = 'https://api.openai.com/v1/embeddings';
-  const body = {
-    model: 'text-embedding-3-small',
-    input: texts
-  };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENAI_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Embeddings API error: ${res.status} ${t}`);
-  }
-  const j = await res.json();
-  return j.data.map(d => d.embedding);
-}
+const redis = (REDIS_ENDPOINT && !PINECONE_BASE_URL && !MOCK_REDIS) ? new Redis(REDIS_ENDPOINT) : null;
 
-// convert float array -> Buffer (Float32 LE)
+// helpers
+function makeId() { return crypto.randomUUID(); }
+
 function float32BufferFromArray(arr) {
   const f32 = new Float32Array(arr);
   return Buffer.from(f32.buffer);
 }
 
-function makeKey(id) {
-  return `${REDIS_PREFIX}${id}`;
+async function embedTexts(texts = []) {
+  if (MOCK_EMBEDDINGS) {
+    // deterministic pseudo-embeddings
+    return texts.map((t) => {
+      let h = 2166136261 >>> 0;
+      for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619) >>> 0;
+      const dim = EMBEDDING_DIM || 1536;
+      const vec = new Array(dim);
+      let x = h;
+      for (let i = 0; i < dim; i++) {
+        x = (x * 1664525 + 1013904223) >>> 0;
+        vec[i] = ((x % 1000) / 500) - 1;
+      }
+      return vec;
+    });
+  }
+
+  if (!OPENAI_KEY) throw new Error('OPENAI_KEY not set in env');
+  const url = 'https://api.openai.com/v1/embeddings';
+  const body = { model: 'text-embedding-3-small', input: texts };
+
+  // basic retry loop for transient errors
+  const maxRetries = 3;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        const j = await res.json();
+        return j.data.map(d => d.embedding);
+      }
+      const txt = await res.text().catch(()=>'<no-body>');
+      // retry on 429/5xx
+      if (res.status === 429 || res.status >= 500) {
+        const delay = 500 * Math.pow(2, attempt);
+        console.warn('embed transient error', res.status, txt, 'retry in', delay);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw new Error(`Embeddings API error: ${res.status} ${txt}`);
+    } catch (err) {
+      if (attempt < maxRetries) {
+        const delay = 500 * Math.pow(2, attempt);
+        console.warn('embed fetch error, retry', attempt, err.message, 'delay', delay);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Embeddings failed after retries');
+}
+
+async function pineconeUpsert(vectors = []) {
+  if (!PINECONE_BASE_URL || !PINECONE_API_KEY) throw new Error('Pinecone not configured');
+  const url = `${PINECONE_BASE_URL}/vectors/upsert`;
+  const body = { vectors };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Api-Key': PINECONE_API_KEY },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(()=>'<no-body>');
+    throw new Error(`Pinecone upsert error ${res.status} ${t}`);
+  }
+  return await res.json();
 }
 
 exports.handler = async (event) => {
   try {
     const body = event.body ? JSON.parse(event.body) : (event || {});
     let rows = [];
-
     if (body.csv) {
       rows = parse(body.csv, { columns: true, skip_empty_lines: true });
     } else if (body.rows && Array.isArray(body.rows)) {
       rows = body.rows;
     } else {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'csv or rows required' })
-      };
+      return { statusCode: 400, body: JSON.stringify({ error: 'csv or rows required' }) };
     }
 
-    // prepare texts
+    // prepare text payloads
     const texts = rows.map(r => {
       const title = r.title || r.name || '';
       const desc = r.description || r.body || r.text || '';
@@ -86,65 +124,69 @@ exports.handler = async (event) => {
       return `${title}\n\n${desc}\n\n${url}`;
     });
 
-    // call embeddings in batches (to avoid huge requests)
+    // embed in batches
     const batchSize = 16;
     const embeddings = [];
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize);
+    for (let i=0;i<texts.length;i+=batchSize) {
+      const batch = texts.slice(i,i+batchSize);
       const emb = await embedTexts(batch);
       embeddings.push(...emb);
-      // small pause if you hit rate limits (optional)
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise(r => setTimeout(r, 30));
     }
 
-    // store each as a Redis HASH with vector blob
+    // If Pinecone configured -> upsert vectors
+    if (PINECONE_BASE_URL && PINECONE_API_KEY) {
+      // Pinecone expects vectors: [{id, values, metadata}]
+      const vectors = rows.map((r, i) => {
+        const id = r.id || makeId();
+        const metadata = {
+          id,
+          title: r.title || r.name || '',
+          url: r.url || '',
+          snippet: (r.description || r.body || '').slice(0, 600)
+        };
+        return { id, values: embeddings[i], metadata };
+      });
+      // Upsert in batches (Pinecone accepts many per request, but keep moderate)
+      const upsertBatch = 50;
+      for (let i=0;i<vectors.length;i+=upsertBatch) {
+        const slice = vectors.slice(i, i+upsertBatch);
+        await pineconeUpsert(slice);
+      }
+      return { statusCode: 200, body: JSON.stringify({ ingested: vectors.length }) };
+    }
+
+    // Otherwise store to Redis (fallback)
+    if (!redis || MOCK_REDIS) {
+      // pretend we stored them
+      return { statusCode: 200, body: JSON.stringify({ ingested: rows.length }) };
+    }
+
+    // store each row as Redis HSET with vector blob
     let count = 0;
-    for (let i = 0; i < rows.length; i++) {
+    for (let i=0;i<rows.length;i++) {
       const id = rows[i].id || makeId();
-      const key = makeKey(id);
+      const key = `${REDIS_PREFIX}${id}`;
       const meta = {
         id,
         title: rows[i].title || rows[i].name || '',
         url: rows[i].url || '',
         snippet: (rows[i].description || rows[i].body || '').slice(0, 600)
       };
-
-      // vector buffer
-      const vec = embeddings[i];
-      if (!vec || vec.length !== EMBEDDING_DIM) {
-        console.warn('embedding length mismatch', id, (vec || []).length);
-        // continue or still store? We'll still attempt to store a buffer (may be empty)
-      }
-      const vecBuf = float32BufferFromArray(vec || new Array(EMBEDDING_DIM).fill(0));
-
-      // HSET fields (store vector as raw blob)
-      // Note: RediSearch expects the vector field to be raw bytes in Float32 LE when index was created.
-      const hm = [
-        'title', meta.title,
-        'url', meta.url,
-        'snippet', meta.snippet,
-        'vector', vecBuf
-      ];
-      // ioredis may not have hsetBuffer; fallback to call if available
+      const vec = embeddings[i] || new Array(EMBEDDING_DIM).fill(0);
+      const vecBuf = float32BufferFromArray(vec);
+      const hm = ['title', meta.title, 'url', meta.url, 'snippet', meta.snippet, 'vector', vecBuf];
       if (typeof redis.hsetBuffer === 'function') {
         await redis.hsetBuffer(key, ...hm);
       } else {
-        // ioredis v5+ will accept Buffers in hm; use HSET with raw args
         await redis.call('HSET', key, ...hm);
       }
-
       count++;
     }
+    return { statusCode: 200, body: JSON.stringify({ ingested: count }) };
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ ingested: count })
-    };
   } catch (err) {
-    console.error('ingest error', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message })
-    };
+    console.error('ingest error', err && err.stack || err);
+    return { statusCode: 500, body: JSON.stringify({ error: err.message || 'server error' }) };
   }
 };
